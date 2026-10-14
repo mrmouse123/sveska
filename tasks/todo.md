@@ -260,3 +260,239 @@ Sve apsolutne putanje pretpostavljaju root. Nađeno i za ispravku:
 - Prijava od početka do kraja (ne kucam lozinke u polja) — Jovanov korak A6.
 - Da `npm ci` + build prolaze na ubuntu-u — vidi se na prvom Actions run-u.
 - AI put (čeka ANTHROPIC_API_KEY, Faza 8).
+
+# Faza 10 — Pregled celog koda (boris-cherny + Karpathy), 2026-10-14
+
+Obim: 6605 LOC u repou. Isključeno iz pregleda: `src/components/ui/*` (shadcn
+boilerplate, nepromenjen) i `src/routeTree.gen.ts` (generisan).
+Ostaje ~4500 LOC koje je čovek/AI stvarno pisao.
+
+Metod: četiri paralelna pregleda po dimenziji, pa SVE nalaze proveravam sam
+izvršavanjem pre nego što ih prijavim. Agent koji tvrdi bug nije dokaz buga.
+
+- [x] D1 Bezbednost: granica radnik/vlasnik, tier provere, RLS, edge funkcija
+- [x] D2 Stanje i sinhronizacija: store.tsx, supabaseService.ts, queries.ts
+- [x] D3 Domenska logika: interpreter.ts, voiceService.ts, actions.ts
+- [x] D4 React/UI + izmene za Pages: komponente, rute, basepath
+- [x] Verifikacija nalaza izvršavanjem (ne verovati agentima na reč)
+- [x] Review sekcija + tasks/lessons.md
+
+Karpathy „become one with the data": pre zaključaka o interpreteru gledati
+STVARNE komande, ne izmišljene. Lekcija iz Faze 5: probe sa ugrađenim demo
+komandama daje lažno samopouzdanje jer se nijedno ime ne sudara.
+
+## D0 — Pregled STVARNIH podataka u bazi (moj deo, ne agentski)
+Karpathy princip 2. Nijedan pregled koda ovo ne bi dao jer je u šemi, ne u kodu.
+
+Higijena podataka je čista: 0 duplikata klijenata i radnika, 0 siročića,
+svi datumi `YYYY-MM-DD`, sva vremena `HH:mm`, nijedna cena NULL.
+
+Nalazi:
+1. **Šema je još ključevana po korisniku, a logika je prešla na organizaciju.**
+   `jobs_pkey = (user_id, id)`, a svi FK su složeni na `(user_id, …)`:
+   `jobs(user_id, customer_id) → customers(user_id, id)`,
+   `mixed_team_members(user_id, worker_id) → workers(user_id, id)`.
+   Posledica: red može da ubaci samo onaj čiji je `user_id` već na vezanim
+   redovima — tj. vlasnik. Zato su radnikovi upisi padali i zato je sync
+   ograničen na vlasnika. **To je bila popravka simptoma, ne uzroka.**
+   Blokira: drugog vlasnika/rukovodioca u organizaciji, prenos vlasništva.
+2. **`org_members_user_id_key UNIQUE (user_id)`** — korisnik može biti u
+   tačno jednoj organizaciji, ikada. Majstor koji radi sam i uz to je radnik
+   u zadruzi je nemoguć. Proizvodna odluka koja je zapisana u šemi, ne u kodu.
+3. **Nema indeksa na `org_id` nigde**, a svaka RLS polisa filtrira po njemu.
+   `jobs_user_date_idx (user_id, date)` više ne odgovara obrascu upita.
+   Ublažavanje: `my_org_id/my_org_role/my_worker_id/my_membership` su STABLE,
+   pa se zovu jednom po upitu, ne po redu — cena je samo seq scan.
+   Na 56 redova nevidljivo.
+4. **26 ID-jeva poslova postoji u više organizacija** — isti demo seed (`j-1`…)
+   kod svakog naloga. Bezbedno je samo zato što PK sadrži `user_id`.
+   Znači ID posla NIJE globalno jedinstven: svaki budući kod koji traži posao
+   po samom `id` je cross-org bug koji čeka.
+5. `set_updated_at` je jedina funkcija bez `search_path` (i nije SECURITY
+   DEFINER, pa je rizik nizak). Dolazi iz migracije koja fali u repou.
+6. Statusi se čuvaju kao srpski prikazni stringovi (`ČEKA NAPLATU`, `ZAVRŠENO`)
+   kao slobodan tekst, bez enum-a/CHECK-a. Promena natpisa u UI-u razvaljuje
+   postojeće podatke; nema ničega što brani upis proizvoljnog statusa.
+
+## NALAZ A (potvrđen izvršavanjem) — nov klijent se podmeće pod postojećeg
+Dva nezavisna sloja imaju istu grešku, pa popravka jednog ne pomaže.
+
+Sloj 1 — interpreter (`interpreter.ts`, `claimBy`/`stems`):
+  "kod Marka Nikolića"    -> customer = "Marko Petrović"   (treba: nov klijent)
+  "kod Ane Petrović"      -> customer = "Marko Petrović"   (treba: nov klijent)
+  "kod Jovana Jovanovića" -> customer = "Nikola Jovanović" (treba: nov klijent)
+
+Sloj 2 — `lookupCustomer` u `store.tsx:35-47` (tekst funkcije izvučen iz fajla
+skriptom i pokrenut nad pravim seed-om; 7 od 9 slučajeva pogrešno):
+  Marko Nikolić, Marko Jovanović, Nikola Marković, Milan Marković -> Marko Petrović
+  Ana Petrović -> Ana Marković
+  Jovan Jovanović -> Jovanović Company   (čovek pod firmom)
+  "Petrovic" bez dijakritike -> NE nalazi Petrovića (nema deburr, a ASR meša)
+
+Uzrok u sloju 2: `n.includes(c.name.toLowerCase().split(" ")[0])` poredi SAMO ime.
+Uzrok u sloju 1: longest-stem-wins bira najbolje pojedinačno poklapanje tokena;
+nema pojma „dato je puno ime, a nijedan postojeći klijent ne odgovara OBA dela".
+
+Posledica za korisnika: posao, cena i dug se vežu za pogrešnog čoveka. Za
+majstora koji vodi ko mu duguje, to je pogrešan račun — ne kozmetika.
+
+Pravilo koje popravka mora da zadovolji: kad rečenica sadrži dva imenska tokena
+a nijedan postojeći klijent ne poklapa oba, pravi se NOV klijent.
+
+## NALAZ B (potvrđen izvršavanjem) — radnik čita ceo adresar klijenata
+Test: `begin; set local role authenticated; set local request.jwt.claims = <pravi
+radnik w-marko>;` pa prebrojavanje, pa `rollback`. Nije čitanje polise — izvršeno.
+
+  poslovi            3 od 29   <- granica DRŽI, vidi samo svoje
+  klijenti           5 od 5    <- SVE, i svih 5 ima telefon/adresu
+  radnici            6         <- ceo spisak
+  timovi / mixed     2 / 1
+  org_members        2         <- UUID-ovi kolega
+
+Uzrok: `orgs_rls.sql:28` — `org select` polisa na customers/workers/teams/
+mixed_teams nema `my_org_role()` član, dok insert/update/delete (29-31) imaju.
+UI traži samo `select("id, name")`; RLS dozvoljava `select *`.
+Posledica: svaki radnik može da izvuče spisak klijenata cele firme.
+
+## NALAZ C (potvrđen) — tier (solo/tim/zadruga) nije provera, nego UI katanac
+`canAccess` postoji na TAČNO dva mesta, oba u pregledaču:
+  RequireAuth.tsx:63, routes/index.tsx:65
+Na serveru: `select count(*) from pg_policies where qual/with_check like '%profiles%'`
+  -> **0**. Nijedna polisa, nijedan RPC, ni edge funkcija ne čita `profiles.role`.
+Posledica: nalog na `solo` može kroz direktan HTTP poziv da pravi zadruga podatke
+i da poziva `create_invite` (koji proverava samo da je owner). Nije curenje
+podataka — preskakanje plaćanja.
+
+## NALAZ D (potvrđen) — radnik se ne može ukloniti iz organizacije
+`org_members` ima TAČNO jednu polisu: `own membership select / SELECT`.
+Nema INSERT/UPDATE/DELETE polise. Nema `remove_member` RPC-a.
+Posledica: otkaz ne prekida pristup. Brisanje reda iz `workers` ne pomaže jer
+`org_members.worker_id` nema FK. Vlasnik to NE MOŽE da uradi iz aplikacije —
+traži service role.
+
+## NALAZ E (potvrđen) — `jobs.status` je slobodan tekst
+Jedini CHECK na `jobs` je `jobs_scope_check` na koloni `scope`. Na `status` nema
+ničega, a okidač ga namerno izuzima iz poređenja.
+Posledica 1: radnik upisuje proizvoljan status (vrati ZAVRŠENO na ZAKAZANO).
+Posledica 2: `aiService.ts:21` šalje `status` u kontekst, a `ai-process:147`
+ga interpolira kao `JSON.stringify(body.context)` — radnikov tekst stiže u
+prompt vlasnika. `ANSWER` putanja prikazuje modelov odgovor BEZ potvrde.
+
+## NALAZ F (moja greška, sada tačnije) — repo migracije se ne mogu primeniti
+Prošle nedelje sam u `migrations/README.md` napisao da se prefiksi ne poklapaju
+sa verzijama u bazi. Potcenio sam: `ls | sort` daje redosled
+
+  1 auth_per_user  2 orgs_rls  3 ...fix  4 my_membership  5 profiles_roles  6 orgs_schema
+
+`orgs_rls` (2) koristi `my_org_id()` koji `orgs_schema` (6) PRAVI.
+`supabase db reset` iz ovog repoa pada na drugom fajlu. Uz nedostajući
+`sveska_init_schema`, repo ne može da podigne bazu — dakle ni jedna popravka
+bezbednosti nije proverljiva pre ovoga.
+
+## NALAZ G (potvrđen čitanjem) — dijalog „Novi posao" pamti prethodni posao
+`Common.tsx:272-275` posle SAČUVAJ resetuje samo `description` i `price`.
+Ostaju: `customer`, `date`, `time`, `location`, `status`, `assignee`.
+Dijalog je trajno montiran unutar `DialogTrigger`, pa stanje preživi zatvaranje.
+Posledica: drugi posao tiho dobije ISTOG klijenta, ISTO vreme i ISTU adresu.
+Provera zauzetosti (`:236-252`) radi samo za `assigneeType === "worker"`,
+pa u SOLO režimu nema ni upozorenja.
+Dodatno: `date` se inicijalizuje sa `today()` pri montiranju — telefon ostavljen
+preko noći nudi jučerašnji datum.
+
+## NALAZ H (potvrđen čitanjem) — ZAVRŠENO i OTKAZANO su susedne pilule
+`Common.tsx:26-33` redosled: ZAKAZANO, DODELJENO, U TOKU, **ZAVRŠENO, OTKAZANO**,
+ČEKA NAPLATU. Pilule su `py-1` + 11px tekst ≈ 22px visine, u flex-wrap redu.
+`setJobStatus` upisuje odmah u Supabase, bez potvrde i bez undo.
+Posledica: najčešća radnja u aplikaciji je na najmanjem targetu, a promašaj
+nadole otkazuje posao.
+
+## ISPRAVKA AGENTSKOG NALAZA — dev server NE vraća 404
+D4 je tvrdio da posle `base: "/sveska/"` koren u dev-u daje Vite 404 i da će
+sledeći čovek misliti da je build pokvaren. Provereno izvršavanjem:
+  curl http://localhost:5173/        -> HTTP 307, location: /sveska/
+  curl http://localhost:5173/sveska/ -> HTTP 200
+Vite sam preusmerava. README je i dalje netačan (redovi 9, 20, 51), ali
+posledica je kozmetička, ne „izgleda pokvareno". Ovo je razlog zašto se
+agentski nalazi proveravaju — lekcija 3.
+
+## MOJE REGRESIJE iz Faze 9 (uvedene mojom izmenom, moje da počistim)
+- `README.md:9,20` — adrese bez `/sveska/` (blaže nego prijavljeno, vidi iznad)
+- `README.md:51` — „TanStack Start je SSR → Vercel ili Netlify" protivreči
+  `spa: { enabled: true }`
+- `_shell.html` nosi `<title>` i og: tagove RUTE `/`, pa `head()` u solo.tsx,
+  tim.tsx, zadruga.tsx, auth.tsx i radnik.tsx više ne daje ništa bez JS-a.
+  Deljenje linka na WhatsApp prikazuje karticu početne za svaku rutu.
+- `<body>` u shell-u je prazan — početna, jedina javna stranica, ne iscrtava
+  ništa dok se bundle ne parsira. Pod SSR-om je imala pravi HTML.
+- `public/robots.txt` je mrtav: crawleri ga čitaju samo na korenu domena.
+- `nitro()` i `npm start` grade Node server koji se nigde ne deployuje.
+
+## NALAZ I (potvrđen izvršavanjem) — interpreter bez „kod" uzima klijenta za radnika
+Pokrenuto nad pravim `src/` modulima. Svaka tvrdnja D3 koju sam testirao se
+reprodukovala.
+
+  "Zakazi Ani Markovic sutra u deset servis bojlera."  (tim)
+     -> ASSIGN_JOB  radnik=Marko  klijent=Ana Marković
+        Posao se dodeljuje radniku koga korisnik nije pomenuo.
+
+  "Napravi tim za Marka Petrovica."  (zadruga)
+     -> CREATE_MIXED_TEAM  clanovi=[Marko, Petar]
+        Tim sastavljen iz imena KLIJENTA, bez ijednog pomenutog radnika.
+
+  "Napravi tim od Marka i Milana za Petrovica."
+     -> clanovi=[Marko, Milan, Petar]   (Petar je iz klijentovog prezimena)
+
+  "Posalji Marka kod Marka Petrovica sutra u deset."  (tim)
+     -> CREATE_JOB, BEZ radnika. `owned` je Set stringova a ne pozicija, pa se
+        radnikov token briše svuda u rečenici. Ovo je normalna muška deklinacija.
+
+Uzrok: `splitByKod` čuva klijenta samo kad „kod" bukvalno postoji; inače obe
+strane gledaju celu rečenicu.
+
+## NALAZ J (potvrđen) — multi-dodela: parovi se zamene i drugo vreme se izgubi
+  "...posalji ELEKTRICARE kod Jovanovic Company, a VODOINSTALATERE kod Marka Petrovica."
+     -> VODOINSTALATERI->Jovanović Company,  ELEKTRIČARI->Marko Petrović
+        Obrnuto. Timovi se dodaju u tvrdo kodiranom redu (`:176-182`), a pare se
+        po indeksu (`:227-235`). Demo komanda prolazi samo zato što slučajno
+        kaže „vodoinstalaterski" prvo.
+
+  "Vodoinstalatere kod Ane Markovic U OSAM, a elektricare kod Milana Ilica U DESET."
+     -> oba @08:00. Drugo vreme se odbacuje (`:231`).
+
+## NALAZ K (potvrđen) — `/^sta/` pojede komandu
+  "Stavi Marka na posao kod Marka Petrovica sutra u deset."  -> ANSWER
+  "Stani, otkazi posao kod Ane Markovic."                    -> ANSWER
+Treba granica reči: `/^(sta|šta)\b/`.
+
+## NALAZ L (potvrđen) — parseTime izmišlja vremena
+  "sedamdeset evra"   -> 07:00        "osamdeset evra"  -> 08:00
+  "desetak minuta"    -> 10:00        "petnaestog u deset" -> 15:00
+  "cena 120.50 evra"  -> 20:50 (!)    "u 24"            -> 24:00 (nevalidno)
+  "u pola pet" / "u podne" -> undefined, pa kartica pokaže samouvereno 09:00
+Cena i vreme se mešaju: broj uz „evra" se čita kao sat.
+
+# Review Faze 10
+
+Obim: 6605 LOC, četiri paralelna pregleda + moj pregled stvarnih podataka.
+Nalazi: 12 potvrđenih grupa (A-L). Ništa u kodu nije menjano — tražen je pregled.
+
+Šta me je iznenadilo:
+1. Granica radnik/vlasnik NA POSLOVIMA drži (3 od 29) — to je ono što smo
+   gradili i radi. Ali adresar klijenata je potpuno otvoren. Gradio sam izolaciju
+   poslova i nisam primetio da polisa na `customers` nema isti član.
+2. Popravka „sync samo vlasnik" iz Faze 7 je bila popravka simptoma. Pravi uzrok
+   je šema ključevana po korisniku (`PK (user_id, id)`, složeni FK), koja fizički
+   ne dopušta da iko osim vlasnika ubaci red.
+3. Repo je neizgradiv zbog redosleda fajlova koji sam ja napravio prošle nedelje.
+   Opisao sam ga kao kozmetički problem prefiksa. Nije.
+4. `stateRef`/`mutate` prepravka je rešila isključivo čitanja u istom tick-u.
+   Upisi su ostali neuslovljeni stanjem u bazi — otuda nalaz B.
+5. D4 je imao jednu netačnu tvrdnju (dev koren daje 404; stvarno daje 307).
+   D3 je bio tačan na svim tačkama koje sam testirao.
+
+Šta ostaje rizično i nije pregledano:
+- `src/components/ui/*` (shadcn) i `routeTree.gen.ts` su namerno izostavljeni.
+- Prijava od početka do kraja nije testirana (ne kucam lozinke).
+- `voiceService` nalaz da se pravilo 10 s ne naoruža pre prve reči NISAM
+  proverio sam — traži lažni SpeechRecognition; prijavljujem kao agentski nalaz.
+- AI putanja (čeka ANTHROPIC_API_KEY).
