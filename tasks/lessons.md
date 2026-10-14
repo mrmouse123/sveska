@@ -100,6 +100,22 @@ izmenama našao je ono što moja proba po konstrukciji nije mogla.
 red vraća 200 i prazan niz BEZ greške, pa korisnik zauvek vidi uspeh.
 Ko pređe na `update`, mora da traži `.select()` i proveri da li je išta vraćeno.
 
+**22. Kad popravljam dvosmislenost u jeziku, proverim šta ista promena radi
+češćem slučaju.**
+Uklanjanje `vowelStem` bi razdvojilo Radu i Rade, ali bi „kod Ane" prestalo da
+nalazi Anu. Dvosmislenost se zapisuje kao ograničenje, ne krpi na slepo.
+
+**23. Kad pišem probu, ulaz mora biti kakav stvarno stiže.**
+Pola prvog prolaza `lang.ts` je palo zato što sam ulaz kucao ASCII-jem
+(„Nikolica"), pa je i izlaz bio bez dijakritike — proba je merila moj ulaz, ne
+kod. Srpski ulaz piši srpski.
+
+**24. Pre nego što zatvorim pravilo u bazi, proverim krši li ga već sama
+aplikacija.**
+Tier se nije mogao zatvoriti kao „scope <= tier", jer demo seed svakom nalogu
+namerno upisuje `tim` i `zadruga` podatke. Upit nad živim podacima je to
+pokazao za dvadeset sekundi; da sam krenuo od polise, polomio bih seed.
+
 ## Dizajn
 
 **15. Kad popravka parkira grešku bez ičega što je prazni, popravka je pogrešna.**

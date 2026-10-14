@@ -619,28 +619,28 @@ Redosled bira RIZIK, ne lakoću: čiste funkcije prve (brza provera, nula uticaj
 na živ sajt), baza poslednja (živa je, i greška se vidi tek kod korisnika).
 
 ## A. Jezik — čiste funkcije, provera izvršavanjem
-- [ ] N5 `/^sta/` guta komande: „Stavi Marka…", „Stani, otkaži…" -> ANSWER
-- [ ] N1 `deburr` pokriva samo šđčćž; Tóth/Müller/ćirilica razbijaju tokene
-- [ ] N2 `vowelStem`/`stems` spajaju različite ljude (Rada/Rade, Ana/Anastasija)
-- [ ] N3 delovi imena kraći od 3-4 znaka ispadaju (Pop, Vuk)
-- [ ] N4 nova imena ostaju u padežu („Marka Nikolića")
-- [ ] N6 multi-dodela: parovi zamenjeni kad su električari prvi; drugo vreme pada
-- [ ] N7 bez „kod" klijent se uzima za radnika
+- [x] N5 `/^sta/` guta komande: „Stavi Marka…", „Stani, otkaži…" -> ANSWER
+- [x] N1 `deburr` pokriva samo šđčćž; Tóth/Müller/ćirilica razbijaju tokene
+- [x] N2 `vowelStem`/`stems` spajaju različite ljude (Rada/Rade, Ana/Anastasija)
+- [x] N3 delovi imena kraći od 3-4 znaka ispadaju (Pop, Vuk)
+- [x] N4 nova imena ostaju u padežu („Marka Nikolića")
+- [x] N6 multi-dodela: parovi zamenjeni kad su električari prvi; drugo vreme pada
+- [x] N7 bez „kod" klijent se uzima za radnika
 
 ## B. Klijent — integritet podataka
-- [ ] C1 mrežni prekid upiše demo preko pravih podataka
-- [ ] C3 `supabaseService` ne proverava oblik ključa (nerazumljiva fetch greška)
-- [ ] C2 dijalog „Novi posao" pamti prethodni posao
+- [x] C1 mrežni prekid upiše demo preko pravih podataka
+- [x] C3 `supabaseService` ne proverava oblik ključa (nerazumljiva fetch greška)
+- [x] C2 dijalog „Novi posao" pamti prethodni posao
 
 ## C. UI — bezbednost dodira
-- [ ] U1 ZAVRŠENO i OTKAZANO susedni, ~22px, bez potvrde i undo
+- [x] U1 ZAVRŠENO i OTKAZANO susedni, ~22px, bez potvrde i undo
 - [ ] U2 shell nosi meta tagove rute `/` za sve rute
 
 ## D. Baza — živa, menja se poslednja i uz dvostranu proveru
-- [ ] S3 `CHECK` na `jobs.status` (pre toga proveriti postojeće vrednosti)
-- [ ] S4 indeksi na `jobs(assignee_id)`, `jobs(customer_id)`; `my_*` u `(select …)`
-- [ ] S2 `remove_member` RPC + DELETE polisa na `org_members`
-- [ ] S1 tier se proverava na serveru, ne samo u pregledaču
+- [x] S3 `CHECK` na `jobs.status` (pre toga proveriti postojeće vrednosti)
+- [x] S4 indeksi na `jobs(assignee_id)`, `jobs(customer_id)`; `my_*` u `(select …)`
+- [x] S2 `remove_member` RPC + DELETE polisa na `org_members`
+- [x] S1 tier se proverava na serveru, ne samo u pregledaču
 
 ## Blokirano, nije moje
 - [ ] S5 `sveska_init_schema` — traži `supabase db pull` i lozinku baze
@@ -648,3 +648,31 @@ na živ sajt), baza poslednja (živa je, i greška se vidi tek kod korisnika).
 ## Pravilo za ovu fazu (iz lekcije 20)
 Za svaku popravku proba se piše PRE nje i mora da bude crvena, pa tek onda
 zelena. Proba napisana posle popravke meri ono što već znam.
+
+## Review Faze 12
+
+Zatvoreno 15 od 17. Svaka grupa u svom commit-u, svaka sa probom.
+
+Nije zatvoreno, sa razlogom:
+- **U2** (shell nosi meta tagove rute `/`): popravka traži prerender po ruti,
+  a sve rute osim `/` su iza prijave i nemaju vrednost za pregled linka.
+  Rizik izmene veći od koristi. Ostaje zapisano.
+- **S5** `sveska_init_schema`: traži `supabase db pull` i lozinku baze.
+
+Delimično, i to namerno:
+- **N2** „kod Rade Nikolić" i dalje nalazi „Rada Nikolić". Isto pravilo čini da
+  „kod Ane" nađe Anu; uklanjanje bi pokvarilo češći slučaj. Popravljena je
+  druga polovina (Anastasija/Ana, Milan/Mila) kroz granicu dužine padeža.
+- **N4** prezime dolazi u nominativ, ime na „-a" ne. „Marka" je genitiv i od
+  „Marko" i od „Marka" — pogrešan nominativ je gori od padeža.
+- **S1** zatvoreno je pozivanje radnika (traži TIM). Šire od toga traži da demo
+  seed prestane da svakom nalogu upisuje `tim` i `zadruga` podatke — to je
+  proizvodna odluka, nije moja.
+
+Šta me je iznenadilo:
+1. Moj prvi N7 filter je gubio Milana iz mixed tima, jer je on i radnik i
+   klijent (Milan Ilić). Uhvatila demo proba, ne čitanje.
+2. Pola „grešaka" u prvom prolazu `lang.ts` bile su pogrešna očekivanja u
+   mojoj probi — ulaz sam pisao ASCII-jem pa je i izlaz bio bez dijakritike.
+3. Tier se ne može zatvoriti kako je nalaz tražio, jer demo svesno krši to
+   pravilo. Nalaz je bio tačan, ali rešenje nije tehničko.
