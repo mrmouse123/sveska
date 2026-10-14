@@ -7,6 +7,10 @@ import { syncStateToSupabase } from "../../src/lib/sveska/supabaseService";
 import { createInitialState } from "../../src/lib/sveska/data";
 import type { DemoState } from "../../src/lib/sveska/types";
 
+/** Proba je zaostala: `org` je dodat u Fazi 7, a potpis ovde nije azuriran,
+ *  pa je `state` padao u slot za `org` i writeState je dobijao undefined. */
+const ORG = "00000000-0000-0000-0000-000000000001";
+
 type Call = { table: string; jobs: number };
 let calls: Call[] = [];
 let inFlightRequests = 0;
@@ -61,9 +65,9 @@ const assert = (name: string, ok: boolean, detail: string) => {
 async function testNewestWins() {
   calls = [];
   maxConcurrent = 0;
-  const a = syncStateToSupabase("u1", stateWith("A"));
-  const b = syncStateToSupabase("u1", stateWith("B"));
-  const c = syncStateToSupabase("u1", stateWith("C"));
+  const a = syncStateToSupabase("u1", ORG, stateWith("A"));
+  const b = syncStateToSupabase("u1", ORG, stateWith("B"));
+  const c = syncStateToSupabase("u1", ORG, stateWith("C"));
   await Promise.all([a, b, c]);
   const tags = tagsWritten();
   assert("only one request in flight at a time", maxConcurrent === 1, `max=${maxConcurrent}`);
@@ -74,8 +78,8 @@ async function testNewestWins() {
 async function testFailureKeepsNewerState() {
   calls = [];
   failNext = 1; // the very first request (teams for state D) fails
-  const d = syncStateToSupabase("u1", stateWith("D"));
-  const e = syncStateToSupabase("u1", stateWith("E"));
+  const d = syncStateToSupabase("u1", ORG, stateWith("D"));
+  const e = syncStateToSupabase("u1", ORG, stateWith("E"));
   let rejected = false;
   await Promise.all([d.catch(() => { rejected = true; }), e.catch(() => {})]);
   const tags = tagsWritten();

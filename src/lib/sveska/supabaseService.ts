@@ -256,10 +256,56 @@ async function one(
   if (error) throw new Error(`${label}: ${error.message}`);
 }
 
+/** Nov posao ide ceo. Za IZMENU postojećeg vidi `patchJobRemote`. */
 export async function saveJob(uid: string, org: string, job: Job): Promise<void> {
   const sb = getSupabase();
   if (!sb) return;
   await one("jobs", () => sb.from("jobs").upsert([jobRow(uid, org)(job)], PK));
+}
+
+/** Polja posla koja klijent sme da menja, i njihove kolone. `id` nije među njima. */
+const JOB_COLUMNS: Record<string, string> = {
+  scope: "scope",
+  customerId: "customer_id",
+  description: "description",
+  date: "date",
+  time: "time",
+  location: "location",
+  price: "price",
+  status: "status",
+  paid: "paid",
+  assigneeType: "assignee_type",
+  assigneeId: "assignee_id",
+  notes: "notes",
+};
+
+/**
+ * Upisuje SAMO izmenjene kolone.
+ *
+ * Pre ovoga je i najmanja izmena išla kao upsert celog reda. Pošto nema
+ * realtime pretplate ni ponovnog čitanja (`loadStateFromSupabase` se zove
+ * jednom, pri učitavanju strane), vlasnikov snimak stanja ume da bude star
+ * satima. Klik na „označi kao plaćeno" je tako šiljao i `status` iz tog starog
+ * snimka i vraćao radnikovo ZAVRŠENO na DODELJENO — bez ijedne greške,
+ * vidljivo tek pri sledećem učitavanju. Nalaz B iz pregleda Faze 10.
+ */
+export async function patchJobRemote(
+  uid: string,
+  id: string,
+  patch: Partial<Job>,
+): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  const row: Record<string, unknown> = {};
+  for (const key of Object.keys(patch)) {
+    const col = JOB_COLUMNS[key];
+    if (!col) continue;
+    const v = (patch as Record<string, unknown>)[key];
+    row[col] = v === undefined ? null : v;
+  }
+  if (Object.keys(row).length === 0) return;
+  // PK je (user_id, id), pa je ovo tačno jedan red; org filtrira RLS.
+  await one("jobs", () => sb.from("jobs").update(row).eq("user_id", uid).eq("id", id));
 }
 
 export async function saveCustomer(uid: string, org: string, customer: Customer): Promise<void> {

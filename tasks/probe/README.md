@@ -20,6 +20,9 @@ Sync probe traži stub za `import.meta.env`:
   store.tsx skriptom, ne prepisan) + interpreter + slučaj kad radnik i klijent
   imaju isti padežni oblik („Pošalji Marka kod Marka Petrovića")
 - `sync.ts` — serijalizacija upisa u Supabase sa stub-ovanim `fetch` (4 tvrdnje)
+- `patch.ts` — dokaz da izmena posla šalje SAMO izmenjene kolone: metod PATCH,
+  telo `{"paid":true}` bez `status`, i mapiranje camelCase -> kolona.
+  Traži iste `--define`/`--banner` zastavice kao `sync.ts`.
 
 Uvozi su relativni (`../../src/...`), a esbuild ih razrešava iz putanje fajla —
 pokreći komande iz korena projekta.

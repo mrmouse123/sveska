@@ -11,6 +11,7 @@ import {
 import { createInitialState, today } from "./data";
 import {
   loadStateFromSupabase,
+  patchJobRemote,
   saveCustomer,
   saveJob,
   saveMixedTeam,
@@ -251,22 +252,22 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     [mutate, persist],
   );
 
-  /** Zajednička putanja za sve izmene posla: primeni lokalno, pa upiši taj jedan red. */
+  /** Zajednička putanja za sve izmene posla: primeni lokalno, pa upiši SAMO izmenu. */
   const patchJob = useCallback(
     (id: string, patch: Partial<Job>) => {
-      let updated: Job | undefined;
+      let found = false;
       mutate((s) => ({
         ...s,
         jobs: s.jobs.map((j) => {
           if (j.id !== id) return j;
-          updated = { ...j, ...patch };
-          return updated;
+          found = true;
+          return { ...j, ...patch };
         }),
       }));
-      if (updated) {
-        const job = updated;
-        persist("posao", (u, o) => saveJob(u, o, job));
-      }
+      // Upisuje se `patch`, ne spojeni red. Vlasnikov snimak stanja ume da bude
+      // star satima jer se baza čita samo pri učitavanju strane, pa bi ceo red
+      // vratio radnikov status na staro.
+      if (found) persist("posao", (u) => patchJobRemote(u, id, patch));
     },
     [mutate, persist],
   );
