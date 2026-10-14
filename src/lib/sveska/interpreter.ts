@@ -28,21 +28,42 @@ const WORD_HOURS: Record<string, string> = {
   dvadeset: "20:00",
 };
 
-/** Longest key first so "sedamnaest" wins over its own prefix "sedam". */
-const WORD_HOUR_KEYS = Object.keys(WORD_HOURS).sort((a, b) => b.length - a.length);
-
 /** Lowercased, deburred words — the unit every name/hour match works on. */
 const tokens = (deburred: string) => deburred.split(/[^a-z0-9]+/).filter(Boolean);
 
+/** Vreme van 00:00-23:59 nije vreme. Bolje nijedno nego 25:00. */
+function hhmm(h: string, m: string): string | undefined {
+  const hh = Number(h);
+  const mm = Number(m);
+  if (hh < 0 || hh > 23 || mm < 0 || mm > 59) return undefined;
+  return `${String(hh).padStart(2, "0")}:${String(mm).padStart(2, "0")}`;
+}
+
+/**
+ * Broj ili rec postaju vreme SAMO uz predlog "u". Bez tog uslova je
+ * "sedamdeset evra" davalo 07:00, "desetak minuta" 10:00, a "cena 120.50 evra"
+ * cak 20:50 — cena se citala kao sat. Izmisljeno vreme je gore od nijednog,
+ * jer kartica potvrde prikazuje sat koji korisnik nije izgovorio.
+ */
 export function parseTime(text: string): string | undefined {
   const t = deburr(text);
-  const explicit = t.match(/(\d{1,2})[:.](\d{2})/);
-  if (explicit) return `${explicit[1]!.padStart(2, "0")}:${explicit[2]}`;
-  const num = t.match(/u\s+(\d{1,2})\b/);
-  if (num) return `${num[1]!.padStart(2, "0")}:00`;
-  for (const tok of tokens(t)) {
-    const hit = WORD_HOUR_KEYS.find((w) => tok.startsWith(w));
-    if (hit) return WORD_HOURS[hit];
+
+  // "17:30" uvek. "17.30" samo posle "u", inace bi datum "15.10." i
+  // cena "120.50" bili procitani kao vreme.
+  const hm =
+    t.match(/(?<!\d)(\d{1,2}):(\d{2})(?!\d)/) ?? t.match(/\bu\s+(\d{1,2})\.(\d{2})(?!\d)/);
+  if (hm) return hhmm(hm[1]!, hm[2]!);
+
+  const num = t.match(/\bu\s+(\d{1,2})(?![\d.,:])/);
+  if (num) return hhmm(num[1]!, "00");
+
+  // Token mora da BUDE sat, ne da pocinje njime: "dvadeset peti u deset"
+  // daje 10:00, jer je samo "deset" posle "u".
+  const toks = tokens(t);
+  for (let i = 1; i < toks.length; i++) {
+    if (toks[i - 1] !== "u") continue;
+    const hit = WORD_HOURS[toks[i]!];
+    if (hit) return hit;
   }
   return undefined;
 }
@@ -57,8 +78,17 @@ export function parseDate(text: string): string {
 
 function parsePrice(text: string): number | undefined {
   const t = deburr(text);
-  const m = t.match(/(\d{2,5})\s*(evr|eur|€)/) ?? t.match(/cena\s*(?:je\s*)?(\d{2,5})/);
-  if (m) return Number(m[1]);
+  // U srpskom je "." hiljadarka (1.200) a "," decimala (120,50), ali ASR daje i
+  // "120.50". Zato: tacka + tacno tri cifre = hiljade, inace 1-2 cifre = decimala.
+  // Stari \d{2,5} je na "120.50 evra" hvatao "50" i vracao cenu 50.
+  const m =
+    t.match(/(?<!\d)(\d{1,3}(?:\.\d{3})+|\d{1,6}(?:[.,]\d{1,2})?)\s*(?:evr|eur|€)/) ??
+    t.match(/cena\s*(?:je\s*)?(?<!\d)(\d{1,3}(?:\.\d{3})+|\d{1,6}(?:[.,]\d{1,2})?)/);
+  if (m) {
+    const raw = m[1]!;
+    const n = /\.\d{3}/.test(raw) ? Number(raw.replace(/\./g, "")) : Number(raw.replace(",", "."));
+    if (n > 0) return n;
+  }
   const words: Record<string, number> = { sto: 100, dvesta: 200, trista: 300, pedeset: 50 };
   for (const [w, v] of Object.entries(words)) if (t.includes(`${w} evr`)) return v;
   return undefined;

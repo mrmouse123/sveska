@@ -14,6 +14,8 @@ Sync probe traži stub za `import.meta.env`:
 
 - `demo.ts` — svih 10 ugrađenih demo komandi kroz `interpretLocal`
 - `t.ts` — `parseTime` i tri reprezentativne rečenice
+- `time.ts` — 31 tvrdnja o `parseTime` i ceni, uključujući lažne pozitive
+  („sedamdeset evra" nije 07:00, „cena 120.50 evra" nije 20:50) i opseg 0-23
 - `sync.ts` — serijalizacija upisa u Supabase sa stub-ovanim `fetch` (4 tvrdnje)
 
 Uvozi su relativni (`../../src/...`), a esbuild ih razrešava iz putanje fajla —
