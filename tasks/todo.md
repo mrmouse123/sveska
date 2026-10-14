@@ -575,3 +575,40 @@ Provereno posle popravke:
       daje nerazumljivu `fetch` grešku umesto jasne poruke. Mala popravka:
       odbaciti ključ koji ne liči na JWT i prikazati „Supabase nije ispravno
       konfigurisan" umesto da se pusti do `fetch`-a.
+
+# Faza 11 — protivnički pregled mojih popravki (2026-10-14)
+
+Agent je gledao SAMO izmene iz Faze 10, sa zadatkom da ih obori. Sve ispod sam
+proverio izvršavanjem pre nego što sam dirao kod.
+
+## Regresije koje sam ja uveo i koje su bile ŽIVE na sajtu
+- F1 KRITIČNO: `NOT_A_NAME` lista je padala na otvoreni rečnik. 13 od 24 obične
+  rečenice je pravilo fantomskog klijenta: „kod Petrovića servis bojlera"
+  -> klijent „Petrovica Servis". Gore od buga koji je lečila.
+  Ispravka: umesto liste zabranjenih reči, koristi se signal koji već postoji —
+  da li reč uopšte imenuje nekog poznatog klijenta — plus red reči (opis stoji
+  POSLE imena, ime PRE prezimena). Oslovljavanja ostaju lista, jer su zatvorena
+  klasa.
+- F2 VISOKO: `(?![\d.,:])` je gutao vreme kad iza sata stoji zarez ili tačka.
+  „Sutra u 10, kod Petrovića" -> bez vremena -> kartica pokaže 09:00.
+  Ispravka: `(?![\d:]|[.,]\d)`.
+- F3 VISOKO: cena sa hiljadama I decimalama. „12.500,00 evra" -> 500.
+  Ispravka: jedan izraz hvata ceo broj, `toAmount` ga tumači.
+- F4 VISOKO: prelazak sa `upsert` na `update` je izgubio samopopravljanje —
+  upis koji ne pogodi nijedan red vraća 200 i prazan niz bez greške.
+  Ispravka: `.select("id")` i greška kad se ništa ne vrati.
+- F9: ime migracionog fajla nije odgovaralo verziji u bazi (`20261014120000`
+  vs `20261014103542`) — ista zamka koju sam istog dana ispravljao.
+
+## Prihvaćeno kao poznato ograničenje (nije regresija, bilo i pre)
+- F5: `rawTokens`/`tokens` se razilaze na slovima koja `deburr` ne pokriva
+  (Tóth, Müller, ćirilica). Ime novog klijenta tada bude izmešano.
+- F6: `vowelStem` spaja Rada/Rade, Savo/Sava, Mila/Mile.
+- F7: `stems()` prefiks spaja Ana/Anastasija, Mila/Milan.
+- F8: drugi deo imena kraći od 4 znaka (Pop, Vuk) i dalje ispada.
+- Nova imena ostaju u padežu („Marka Nikolića", ne „Marko Nikolić").
+
+## Dodato
+- `tasks/probe/regress.ts` — rečenice koje su JEDNOM radile pa ih je moja
+  popravka pokvarila. Držati zelenim.
+- `tasks/probe/patch.ts` — tvrdnja da upis u nepostojeći red puca.

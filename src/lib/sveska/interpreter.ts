@@ -61,7 +61,9 @@ export function parseTime(text: string): string | undefined {
     t.match(/(?<!\d)(\d{1,2}):(\d{2})(?!\d)/) ?? t.match(/\bu\s+(\d{1,2})\.(\d{2})(?!\d)/);
   if (hm) return hhmm(hm[1]!, hm[2]!);
 
-  const num = t.match(/\bu\s+(\d{1,2})(?![\d.,:])/);
+  // `(?![\d:]|[.,]\d)` odbacuje "10:30" i "10.50", ali pusta "u 10," i "u 10."
+  // — ranije je svaka interpunkcija iza sata gutala vreme.
+  const num = t.match(/\bu\s+(\d{1,2})(?![\d:]|[.,]\d)/);
   if (num) return hhmm(num[1]!, "00");
 
   // Token mora da BUDE sat, ne da pocinje njime: "dvadeset peti u deset"
@@ -83,18 +85,26 @@ export function parseDate(text: string): string {
   return tomorrow();
 }
 
+/**
+ * "1.200,50" -> 1200.5, "1.200" -> 1200, "120.50" -> 120.5, "90" -> 90.
+ * U srpskom je "." hiljadarka a "," decimala; ASR ipak daje i "120.50", pa se
+ * tacka tumaci kao hiljade samo kad je prate tacno tri cifre.
+ */
+function toAmount(raw: string): number {
+  if (raw.includes(",")) return Number(raw.replace(/\./g, "").replace(",", "."));
+  return /\.\d{3}(?!\d)/.test(raw) ? Number(raw.replace(/\./g, "")) : Number(raw);
+}
+
 function parsePrice(text: string): number | undefined {
   const t = deburr(text);
-  // U srpskom je "." hiljadarka (1.200) a "," decimala (120,50), ali ASR daje i
-  // "120.50". Zato: tacka + tacno tri cifre = hiljade, inace 1-2 cifre = decimala.
-  // Stari \d{2,5} je na "120.50 evra" hvatao "50" i vracao cenu 50.
+  // Jedan izraz hvata CEO broj, pa ga `toAmount` tumaci. Ranije su dve
+  // alternative hvatale razlicite delove, pa je "12.500,00 evra" davalo 500.
   const m =
-    t.match(/(?<!\d)(\d{1,3}(?:\.\d{3})+|\d{1,6}(?:[.,]\d{1,2})?)\s*(?:evr|eur|€)/) ??
-    t.match(/cena\s*(?:je\s*)?(?<!\d)(\d{1,3}(?:\.\d{3})+|\d{1,6}(?:[.,]\d{1,2})?)/);
+    t.match(/(?<!\d)(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)\s*(?:evr|eur|€)/) ??
+    t.match(/cena\s*(?:je\s*)?(?<!\d)(\d{1,3}(?:\.\d{3})+(?:,\d{1,2})?|\d+(?:[.,]\d{1,2})?)/);
   if (m) {
-    const raw = m[1]!;
-    const n = /\.\d{3}/.test(raw) ? Number(raw.replace(/\./g, "")) : Number(raw.replace(",", "."));
-    if (n > 0) return n;
+    const n = toAmount(m[1]!);
+    if (Number.isFinite(n) && n >= 0) return n;
   }
   const words: Record<string, number> = { sto: 100, dvesta: 200, trista: 300, pedeset: 50 };
   for (const [w, v] of Object.entries(words)) if (t.includes(`${w} evr`)) return v;
@@ -176,25 +186,6 @@ function claimBy<T>(tokens: string[], people: T[], namesOf: (p: T) => string[]):
   return out;
 }
 
-/** Vreme, datum i cena nisu delovi imena — a ni funkcijske reci, koje su kratke. */
-const NOT_A_NAME = new Set([
-  "sutra",
-  "danas",
-  "prekosutra",
-  "veceras",
-  "jutros",
-  "cena",
-  "evra",
-  "eura",
-  "evro",
-  "dinara",
-  ...Object.keys(WORD_HOURS),
-]);
-
-function canBeName(tok: string): boolean {
-  return tok.length >= 4 && !/^\d+$/.test(tok) && !NOT_A_NAME.has(tok);
-}
-
 /**
  * In Serbian the client is the one after "kod": „Pošalji Marka kod Petrovića.“
  * Those words belong to the customer; everything else may name a worker.
@@ -209,10 +200,9 @@ function splitByKod(text: string) {
   all.forEach((tok, i) => {
     if (tok !== "kod") return;
     // The client is normally one or two words: "kod Petrovića", "kod Marka Petrovića".
-    // Prva rec je uvek klijentova; druga samo ako uopste moze biti ime, inace je
-    // "kod Petrovica DA popravi" davalo klijenta "Petrovica Da".
-    if (all[i + 1]) owned.add(i + 1);
-    if (all[i + 2] && canBeName(all[i + 2]!)) owned.add(i + 2);
+    // Obe reci ulaze u prozor; koja od njih je zaista deo imena odlucuje
+    // `matchCustomers`, jer tek tamo postoji spisak klijenata.
+    for (const j of [i + 1, i + 2]) if (all[j]) owned.add(j);
   });
   const ownedIdx = [...owned].sort((a, b) => a - b);
   return {
@@ -227,6 +217,10 @@ function splitByKod(text: string) {
 
 const vowelStem = (w: string) => w.replace(/[aeiou]$/, "");
 
+/** Ime novog klijenta od izgovorenih reci. Ostaje u padezu — korisnik ga preimenuje. */
+const titleCase = (words: string[]) =>
+  words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+
 /** Delovi imena koji nose informaciju. "Ana" je kratko ali razlikuje — ulazi. */
 const nameParts = (name: string) =>
   deburr(name)
@@ -238,20 +232,32 @@ const nameParts = (name: string) =>
  * svog imena. Bez uslova razlicitosti "Jovan Jovanovic" bi poklopio "Jovanović
  * Company", jer "jovanovic" pocinje sa "jovan".
  */
+/**
+ * Koliko izgovorena rec imenuje ovaj deo imena; 0 znaci da ga ne imenuje.
+ * Tri slucaja, namerno u jednoj funkciji da se pravilo cita na jednom mestu:
+ *  1. padez pokriven stemom       — "petrovica" -> "Petrovic"
+ *  2. izgovoreno je skraceno      — "markov"    -> "Markovic"
+ *  3. kratko ime menja samoglasnik — "ane"      -> "Ana"  (stems() skracuje tek >4 slova)
+ */
+function partScore(tok: string, part: string): number {
+  const byStem = matchScore(tok, part);
+  if (byStem) return byStem;
+  if (part.startsWith(tok)) return tok.length;
+  if (vowelStem(part) === vowelStem(tok)) return tok.length;
+  return 0;
+}
+
+/** Da li `person` pokriva SVE izgovorene reci, i to RAZLICITIM delovima imena. */
 function coversAll(spoken: string[], person: string[]): boolean {
   const used = new Set<number>();
   for (const tok of spoken) {
     let pick = -1;
-    let bestLen = 0;
+    let best = 0;
     person.forEach((part, i) => {
       if (used.has(i)) return;
-      // `ane` i `ana` su isto ime: kratka imena (Ana, Eva) menjaju samo zadnji
-      // samoglasnik, a `stems()` skracuje tek imena duza od cetiri slova.
-      const sameStem = vowelStem(part) === vowelStem(tok) ? tok.length : 0;
-      const len =
-        matchScore(tok, part) || (part.startsWith(tok) ? tok.length : 0) || sameStem;
-      if (len > bestLen) {
-        bestLen = len;
+      const score = partScore(tok, part);
+      if (score > best) {
+        best = score;
         pick = i;
       }
     });
@@ -263,22 +269,49 @@ function coversAll(spoken: string[], person: string[]): boolean {
 
 function matchCustomers(text: string, state: DemoState): string[] {
   const { customerTokens, kodScoped, spokenCustomer } = splitByKod(text);
-  const claimed = claimBy(customerTokens, state.customers, (c) => nameParts(c.name)).map(
-    (c) => c.name,
+  if (!kodScoped) {
+    return claimBy(customerTokens, state.customers, (c) => nameParts(c.name)).map((c) => c.name);
+  }
+
+  // Koja izgovorena rec imenuje nekog poznatog klijenta? Signal koji vec imamo,
+  // umesto liste zabranjenih reci — ona je padala na otvoreni recnik, pa je
+  // "kod Petrovica SERVIS bojlera" pravilo fantomskog klijenta "Petrovica Servis".
+  const names = customerTokens.map((tok) =>
+    state.customers.some((c) => nameParts(c.name).some((p) => partScore(tok, p) > 0)),
   );
 
-  // Kad znamo tacno sta je izgovoreno ("kod Marka Nikolica"), pobednik mora da
-  // pokrije sve delove. Inace je "Marka Nikolica" zavrsavalo kao "Marko
-  // Petrovic" — posao, cena i dug na pogresnom covjeku. Ako nijedan postojeci
-  // klijent ne odgovara, ime ide dalje kao NOV klijent.
-  if (kodScoped && customerTokens.length > 1) {
-    const ok = claimed.filter((n) => coversAll(customerTokens, nameParts(n)));
-    if (ok.length) return ok;
-    const fresh = spokenCustomer.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
-    return fresh ? [fresh] : [];
-  }
-  return claimed;
+  // Red reci odlucuje: u srpskom opis stoji POSLE imena ("Petrovica servis"), a
+  // ime PRE prezimena ("Jovana Jovanovica"). Zato se zadrzava sve do poslednje
+  // reci koja nekog imenuje; ono iza nje je opis. Ako niko nije imenovan,
+  // klijent je nov i uzima se sve izgovoreno.
+  // Rec koja nikog ne imenuje a stoji PRE imena je ili ime novog klijenta
+  // ("Jovana Jovanovica") ili oslovljavanje ("gospodina Petrovica"). Razlikuje
+  // ih to sto je oslovljavanje zatvorena klasa — mozes je nabrojati. Opisi,
+  // koje smo ranije pokusali da nabrojimo, to nisu, i zato je ona lista pala.
+  const titles = customerTokens.map(
+    (tok, i) => !names[i] && /^(gospod|gospodj|gdin|doktor|dr|majstor|komsij|firm|gazd|kum|tetk|cik|strin|ujk)/.test(tok),
+  );
+
+  const names2 = names.map((n, i) => n && !titles[i]);
+  const last = names2.lastIndexOf(true);
+  const keepTo = last < 0 ? customerTokens.length - 1 : last;
+  const keep = (_: unknown, i: number) => i <= keepTo && !titles[i];
+  const kept = customerTokens.filter(keep);
+  const spoken = spokenCustomer.filter(keep);
+
+  const fresh = () => [titleCase(spoken)].filter(Boolean);
+  if (last < 0) return fresh();
+
+  const claimed = claimBy(kept, state.customers, (c) => nameParts(c.name)).map((c) => c.name);
+  if (kept.length === 1) return claimed;
+
+  // Vise reci: pobednik mora da pokrije SVE, inace je "kod Marka Nikolica"
+  // zavrsavalo kao "Marko Petrovic" — posao i dug na pogresnom coveku.
+  const ok = claimed.filter((n) => coversAll(kept, nameParts(n)));
+  return ok.length ? ok : fresh();
 }
+
+
 
 function matchWorkers(text: string, state: DemoState): string[] {
   const { workerTokens } = splitByKod(text);

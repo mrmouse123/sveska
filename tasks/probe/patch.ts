@@ -13,6 +13,7 @@ import { patchJobRemote } from "../../src/lib/sveska/supabaseService";
 
 type Seen = { method: string; body: Record<string, unknown>; query: string };
 let seen: Seen | null = null;
+let rowsBack = true;
 
 globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
   const href = String(url);
@@ -21,7 +22,10 @@ globalThis.fetch = (async (url: string | URL | Request, init?: RequestInit) => {
     body: typeof init?.body === "string" ? (JSON.parse(init.body) as Record<string, unknown>) : {},
     query: href.split("?")[1] ?? "",
   };
-  return new Response("[]", { status: 200, headers: { "Content-Type": "application/json" } });
+  // Supabase vraca izmenjene redove jer `patchJobRemote` trazi `.select("id")`.
+  // Prazan niz znaci da upis nije pogodio nijedan red i mora da bude greska.
+  const body = rowsBack ? '[{"id":"j-s1"}]' : "[]";
+  return new Response(body, { status: 200, headers: { "Content-Type": "application/json" } });
 }) as typeof fetch;
 
 const UID = "11111111-1111-1111-1111-111111111111";
@@ -64,7 +68,20 @@ await patchJobRemote(UID, "j-s1", { assigneeType: "worker", assigneeId: "w-marko
   check("mapiranje: nema camelCase ključeva", !("assigneeType" in b) && !("assigneeId" in b), JSON.stringify(b));
 }
 
-// 4. Prazan patch ne sme da pošalje ništa.
+// 4. Upis koji ne pogodi nijedan red MORA da pukne — PostgREST u tom slučaju
+//    vraća 200 i prazan niz, bez greške, pa bi korisnik viđao uspeh zauvek.
+rowsBack = false;
+seen = null;
+let threw = false;
+try {
+  await patchJobRemote(UID, "j-ne-postoji", { paid: true });
+} catch {
+  threw = true;
+}
+check("nepostojeci posao: baca grešku", threw, "prošlo tiho");
+rowsBack = true;
+
+// 5. Prazan patch ne sme da pošalje ništa.
 seen = null;
 await patchJobRemote(UID, "j-s1", {});
 check("prazan patch: nema zahteva", seen === null, JSON.stringify(seen));

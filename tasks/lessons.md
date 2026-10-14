@@ -82,6 +82,24 @@ Rekao sam „red 2, kopiraj sve posle znaka =", a on je nalepio iz moje poruke
 gde su stajala oba reda. Komanda sa `Set-Clipboard` + provera dužine i broja
 redova ne ostavlja prostor za grešku.
 
+**19. Kad popravku branim listom reči, prvo pitam je li klasa otvorena.**
+`NOT_A_NAME` je pokušavala da nabroji opise („servis", „hitno", „popodne") —
+to je otvorena klasa i lista je morala da padne. Pala je na 13 od 24 obične
+rečenice: „kod Petrovića servis bojlera" je pravilo klijenta „Petrovica Servis".
+Oslovljavanja (gospodin, doktor, majstor, komšija) JESU zatvorena klasa i tamo
+je lista ispravan alat. Pre liste: da li mogu da nabrojim sve članove?
+
+**20. Kad moja proba prolazi a popravka je rizična, proba je premala.**
+`names2.ts` je bio 23/23 zelen dok je kod u produkciji lomio svaku drugu
+rečenicu. U njemu nije bilo nijedne rečenice sa običnom rečju posle „kod
+<Prezime>", ni sa interpunkcijom iza sata. Protivnički pregled nad MOJIM
+izmenama našao je ono što moja proba po konstrukciji nije mogla.
+
+**21. Kad zamenim `upsert` sa `update`, gubim samopopravljanje.**
+`upsert` je usput stvarao red koji nedostaje; `update` koji ne pogodi nijedan
+red vraća 200 i prazan niz BEZ greške, pa korisnik zauvek vidi uspeh.
+Ko pređe na `update`, mora da traži `.select()` i proveri da li je išta vraćeno.
+
 ## Dizajn
 
 **15. Kad popravka parkira grešku bez ičega što je prazni, popravka je pogrešna.**

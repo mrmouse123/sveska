@@ -305,7 +305,16 @@ export async function patchJobRemote(
   }
   if (Object.keys(row).length === 0) return;
   // PK je (user_id, id), pa je ovo tačno jedan red; org filtrira RLS.
-  await one("jobs", () => sb.from("jobs").update(row).eq("user_id", uid).eq("id", id));
+  //
+  // `.select("id")` nije ukras: PostgREST na UPDATE koji ne pogodi nijedan red
+  // vraća 200 i prazan niz, BEZ greške. Raniji `upsert` je takav red usput
+  // stvarao, pa se stanje samo popravljalo; `update` to ne može, i bez ove
+  // provere bi korisnik zauvek viđao uspeh dok se u bazi ne menja ništa.
+  const { data, error } = await sb.from("jobs").update(row).eq("user_id", uid).eq("id", id).select("id");
+  if (error) throw new Error(`jobs: ${error.message}`);
+  if (!data || data.length === 0) {
+    throw new Error(`jobs: posao ${id} ne postoji u bazi, izmena nije upisana`);
+  }
 }
 
 export async function saveCustomer(uid: string, org: string, customer: Customer): Promise<void> {
