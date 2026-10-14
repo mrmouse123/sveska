@@ -518,7 +518,7 @@ Bez probe bi oba otišla u produkciju. Ovo je argument za `names2.ts`.
 
 Ostaje otvoreno:
 - [ ] `sveska_init_schema` — traži `supabase db pull` i lozinku baze (Jovan)
-- [ ] git push — repo `mrmouse123/sveska` ne postoji; remote je dodat
+- [x] git push — repo napravljen, 7 commita na `main`, Pages živ
 - [ ] Bez „kod" interpreter može uzeti klijenta za radnika; „kod" kao obična
       reč krade mesto klijenta. Traži odluku o dizajnu, ne zakrpu.
 - [ ] Tier je UI katanac (0 polisa čita profiles) — preskakanje plaćanja
@@ -528,3 +528,27 @@ Ostaje otvoreno:
       ne razlikuje „prazno" od „palo")
 - [ ] Dijalog „Novi posao" pamti prethodni posao; ZAVRŠENO/OTKAZANO susedni
 - [ ] Shell nosi meta tagove rute `/` za sve rute
+
+## Objavljeno (2026-10-14)
+
+`https://mrmouse123.github.io/sveska/` — živ.
+
+- Repo `mrmouse123/sveska`, javan, grana `main`, 7 commita.
+- Pages Source = GitHub Actions; obe Actions tajne postavljene.
+- Run #1 je PAO za 15 s sa porukom „Fale Actions secrets: VITE_SUPABASE_URL
+  VITE_SUPABASE_ANON_KEY" — zaštita iz workflow-a je odradila tačno ono zbog
+  čega postoji, umesto da objavi sajt bez backenda.
+- Attempt #2: build 31 s, deploy 11 s, ukupno 53 s, uspeh.
+
+Provereno na živom sajtu, ne na pretpostavci:
+  /sveska/           200
+  /sveska/auth       404 + shell  (namerni Pages fallback)
+  /sveska/radnik     404 + shell
+  /sveska/favicon.svg 200
+  F5 na /sveska/auth -> prijava se iscrtava, nula grešaka u konzoli
+  authContext-BSfwIYxP.js sadrži 3 pojave project ref-a => Actions tajne su
+  stvarno stigle u build; sajt nije izašao bez backenda.
+
+Upozorenja iz log-a, nisu prekidna: `actions/checkout@v4` i `setup-node@v4`
+ciljaju Node 20 (deprecated, forsiraju se na 24); `ubuntu-latest` prelazi na
+Ubuntu 26 od 19.10.2026.
