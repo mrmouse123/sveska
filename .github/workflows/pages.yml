@@ -1,0 +1,85 @@
+# Objavljuje SVESKU na GitHub Pages.
+#
+# Build artefakti se NE commit-uju (.output je u .gitignore) — Pages dobija
+# sveže izgrađen `.output/public` iz grane `main`. Zato svaka promena koda
+# postaje živ sajt sama, bez ručnog build-a i commit-a build fajlova.
+#
+# Jednom, u repou: Settings → Pages → Source = GitHub Actions,
+# i Settings → Secrets and variables → Actions → dodaj dve vrednosti ispod.
+name: Deploy na GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Ako se dva push-a preklope, važi poslednji; tekući se ne prekida da sajt
+# ne ostane u pola objave.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      # Vite ugrađuje VITE_* vrednosti u bundle u trenutku build-a. Ako ovde
+      # fale, build PROLAZI ali sajt izađe bez backenda — prijava ne radi, a
+      # greška se vidi tek u pregledaču. Zato pada ovde, odmah i jasno.
+      - name: Proveri Supabase podešavanja
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          missing=""
+          [ -z "$VITE_SUPABASE_URL" ] && missing="$missing VITE_SUPABASE_URL"
+          [ -z "$VITE_SUPABASE_ANON_KEY" ] && missing="$missing VITE_SUPABASE_ANON_KEY"
+          if [ -n "$missing" ]; then
+            echo "::error::Fale Actions secrets:$missing"
+            echo "Dodaj ih u Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+          echo "Oba podešavanja postoje."
+
+      - name: Build
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: npm run build:pages
+
+      # Dokaz da je SPA okvir zaista ispisan — bez index.html Pages servira
+      # praznu stranicu, a to se inače vidi tek posle objave.
+      - name: Proveri izlaz
+        run: |
+          test -f .output/public/index.html || { echo "::error::Nema .output/public/index.html"; exit 1; }
+          test -f .output/public/404.html   || { echo "::error::Nema .output/public/404.html"; exit 1; }
+          ls -la .output/public
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .output/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,287 @@
+import type { AiResult, DemoState, Mode } from "./types";
+import { daysFromNow, today, tomorrow } from "./data";
+import { answerQuestion } from "./queries";
+
+const deburr = (s: string) =>
+  s
+    .toLowerCase()
+    .replaceAll("š", "s")
+    .replaceAll("đ", "dj")
+    .replaceAll("č", "c")
+    .replaceAll("ć", "c")
+    .replaceAll("ž", "z");
+
+const WORD_HOURS: Record<string, string> = {
+  sedam: "07:00",
+  osam: "08:00",
+  devet: "09:00",
+  deset: "10:00",
+  jedanaest: "11:00",
+  dvanaest: "12:00",
+  trinaest: "13:00",
+  cetrnaest: "14:00",
+  petnaest: "15:00",
+  sesnaest: "16:00",
+  sedamnaest: "17:00",
+  osamnaest: "18:00",
+  devetnaest: "19:00",
+  dvadeset: "20:00",
+};
+
+/** Longest key first so "sedamnaest" wins over its own prefix "sedam". */
+const WORD_HOUR_KEYS = Object.keys(WORD_HOURS).sort((a, b) => b.length - a.length);
+
+/** Lowercased, deburred words — the unit every name/hour match works on. */
+const tokens = (deburred: string) => deburred.split(/[^a-z0-9]+/).filter(Boolean);
+
+export function parseTime(text: string): string | undefined {
+  const t = deburr(text);
+  const explicit = t.match(/(\d{1,2})[:.](\d{2})/);
+  if (explicit) return `${explicit[1]!.padStart(2, "0")}:${explicit[2]}`;
+  const num = t.match(/u\s+(\d{1,2})\b/);
+  if (num) return `${num[1]!.padStart(2, "0")}:00`;
+  for (const tok of tokens(t)) {
+    const hit = WORD_HOUR_KEYS.find((w) => tok.startsWith(w));
+    if (hit) return WORD_HOURS[hit];
+  }
+  return undefined;
+}
+
+export function parseDate(text: string): string {
+  const t = deburr(text);
+  if (t.includes("prekosutra")) return daysFromNow(2);
+  if (t.includes("sutra")) return tomorrow();
+  if (t.includes("danas") || t.includes("veceras")) return today();
+  return tomorrow();
+}
+
+function parsePrice(text: string): number | undefined {
+  const t = deburr(text);
+  const m = t.match(/(\d{2,5})\s*(evr|eur|€)/) ?? t.match(/cena\s*(?:je\s*)?(\d{2,5})/);
+  if (m) return Number(m[1]);
+  const words: Record<string, number> = { sto: 100, dvesta: 200, trista: 300, pedeset: 50 };
+  for (const [w, v] of Object.entries(words)) if (t.includes(`${w} evr`)) return v;
+  return undefined;
+}
+
+const DESCRIPTIONS: [RegExp, string][] = [
+  [/bojler/, "Servis bojlera"],
+  [/slavin/, "Popravka slavine"],
+  [/kupatil/, "Radovi u kupatilu"],
+  [/instalacij/, "Popravka instalacije"],
+  [/krec|molera[js]|farb/, "Krečenje"],
+  [/struj|elektr|osigurac|tabl/, "Električni radovi"],
+  [/cev|voda|vodoinstalater|odgus/, "Vodoinstalaterski radovi"],
+  [/klim/, "Montaža klime"],
+  [/grejanj|kotl/, "Servis grejanja"],
+];
+
+function parseDescription(text: string, fallback = "Novi posao"): string {
+  const t = deburr(text);
+  for (const [re, label] of DESCRIPTIONS) if (re.test(t)) return label;
+  return fallback;
+}
+
+/** Declension-tolerant stems: "Marko" → marko|mark, "Petar" → petar|peta|petr. */
+function stems(name: string): string[] {
+  const n = deburr(name);
+  const out = [n];
+  if (n.length > 4) out.push(n.slice(0, -1));
+  if (n.endsWith("ar")) out.push(`${n.slice(0, -2)}r`); // Petar → Petra, Aleksandar → Aleksandra
+  return out.filter((s) => s.length >= 3);
+}
+
+/**
+ * How specifically this token names this person: the length of the longest stem it
+ * starts with, 0 when it does not name them at all. "markovic" scores 8 for
+ * „Marković" but only 5 for „Marko", so the longer name wins the token.
+ */
+function matchScore(token: string, name: string): number {
+  let best = 0;
+  for (const s of stems(name)) if (token.startsWith(s)) best = Math.max(best, s.length);
+  return best;
+}
+
+/**
+ * Every token names at most one person: the one matching it most specifically. When two
+ * people match a token equally well — „Nikola Jovanović" and „Jovanović Company" both
+ * answer to "Jovanovića" — the one covering more of the sentence wins, so saying
+ * "kod Jovanović Company" picks the company.
+ * Results come back in the order the tokens appear, which is what multi-assignment pairs on.
+ */
+function claimBy<T>(tokens: string[], people: T[], namesOf: (p: T) => string[]): T[] {
+  const scoreOf = (person: T, token: string) =>
+    Math.max(0, ...namesOf(person).map((n) => matchScore(token, n)));
+
+  const ranked = people
+    .map((person, order) => ({
+      person,
+      order,
+      total: tokens.reduce((sum, tok) => sum + scoreOf(person, tok), 0),
+    }))
+    .filter((r) => r.total > 0)
+    .sort((a, b) => b.total - a.total || a.order - b.order);
+
+  const out: T[] = [];
+  for (const tok of tokens) {
+    let winner: T | null = null;
+    let best = 0;
+    // `ranked` is ordered by coverage, so a tie on score keeps the broader match.
+    for (const r of ranked) {
+      const score = scoreOf(r.person, tok);
+      if (score > best) {
+        best = score;
+        winner = r.person;
+      }
+    }
+    if (winner && !out.includes(winner)) out.push(winner);
+  }
+  return out;
+}
+
+/**
+ * In Serbian the client is the one after "kod": „Pošalji Marka kod Petrovića.“
+ * Those words belong to the customer; everything else may name a worker.
+ * Without a "kod" we cannot tell them apart, so both sides see the whole sentence.
+ */
+function splitByKod(text: string) {
+  const all = tokens(deburr(text));
+  const owned = new Set<string>();
+  all.forEach((tok, i) => {
+    if (tok !== "kod") return;
+    // The client is normally one or two words: "kod Petrovića", "kod Marka Petrovića".
+    for (const next of [all[i + 1], all[i + 2]]) if (next) owned.add(next);
+  });
+  return {
+    customerTokens: owned.size ? [...owned] : all,
+    workerTokens: all.filter((tok) => !owned.has(tok)),
+  };
+}
+
+function matchCustomers(text: string, state: DemoState): string[] {
+  const { customerTokens } = splitByKod(text);
+  return claimBy(customerTokens, state.customers, (c) =>
+    // Short parts like "Ana" are too collision-prone to identify anyone.
+    deburr(c.name)
+      .split(" ")
+      .filter((p) => p.length > 3),
+  ).map((c) => c.name);
+}
+
+function matchWorkers(text: string, state: DemoState): string[] {
+  const { workerTokens } = splitByKod(text);
+  return claimBy(workerTokens, state.workers, (w) => [w.name]).map((w) => w.name);
+}
+
+function matchTeams(text: string, state: DemoState): string[] {
+  const t = deburr(text);
+  const out: string[] = [];
+  if (/vodoinstalater/.test(t)) out.push("VODOINSTALATERI");
+  if (/elektric|struj/.test(t)) out.push("ELEKTRIČARI");
+  return out.filter((n) => state.teams.some((tm) => tm.name === n));
+}
+
+const isQuestion = (t: string) =>
+  /^(ko |koji|koliko|kada|gde|sta|da li|ima li)/.test(deburr(t).trim()) || t.includes("?");
+
+/** Deterministic local interpreter used when the AI service is unavailable. */
+export function interpretLocal(text: string, mode: Mode, state: DemoState): AiResult {
+  const t = deburr(text);
+  const date = parseDate(text);
+  const time = parseTime(text);
+  const customers = matchCustomers(text, state);
+  const workers = matchWorkers(text, state);
+  const teams = matchTeams(text, state);
+
+  if (isQuestion(text)) {
+    const answer = answerQuestion(text, mode, state);
+    return {
+      intent: "QUESTION",
+      confidence: answer ? 0.9 : 0.4,
+      answer:
+        answer ??
+        "Nisam sigurna šta tačno tražiš. Pitaj me npr. „Koji su poslovi danas?“ ili „Ko mi duguje novac?“",
+      suggestedAction: "ANSWER",
+      source: "local",
+    };
+  }
+
+  // Mixed team creation
+  if (/tim od|napravi tim|mixed|ekipu od|formiraj tim/.test(t) && workers.length >= 2) {
+    const project =
+      /petrovic/.test(t) ? "RENOVACIJA PETROVIĆ" : `PROJEKAT ${(customers[0] ?? "NOVI").toUpperCase()}`;
+    return {
+      intent: "CREATE_MIXED_TEAM",
+      confidence: 0.9,
+      project,
+      members: workers.map((name) => ({
+        name,
+        trade: state.workers.find((w) => w.name === name)?.trade ?? "majstor",
+      })),
+      suggestedAction: "CREATE_MIXED_TEAM",
+      source: "local",
+    };
+  }
+
+  // Multi assignment (zadruga)
+  if (mode === "zadruga" && (teams.length >= 2 || (teams.length >= 1 && customers.length >= 2))) {
+    const assignments = teams.map((team, i) => ({
+      team,
+      customer: customers[i] ?? customers[0] ?? "Nepoznat klijent",
+      time: time ?? "08:00",
+      date,
+      description:
+        team === "ELEKTRIČARI" ? "Električni radovi" : "Vodoinstalaterski radovi",
+    }));
+    return {
+      intent: "MULTI_ASSIGNMENT",
+      confidence: 0.92,
+      assignments,
+      suggestedAction: "CREATE_ASSIGNMENTS",
+      source: "local",
+    };
+  }
+
+  // Assign to a single worker or team
+  if ((mode === "tim" || mode === "zadruga") && (workers.length === 1 || teams.length === 1)) {
+    return {
+      intent: "ASSIGN_JOB",
+      confidence: 0.93,
+      ...(workers[0] ? { worker: workers[0] } : {}),
+      ...(teams[0] ? { team: teams[0] } : {}),
+      ...(customers[0] ? { customer: customers[0] } : {}),
+      description: parseDescription(text, "Radovi kod klijenta"),
+      date,
+      time: time ?? "09:00",
+      ...(parsePrice(text) !== undefined ? { price: parsePrice(text)! } : {}),
+      suggestedAction: "ASSIGN_JOB",
+      source: "local",
+    };
+  }
+
+  // Default: create a job
+  if (customers.length || /idem kod|zakazi|zakazi mi|posao/.test(t)) {
+    return {
+      intent: "CREATE_JOB",
+      confidence: 0.9,
+      ...(customers[0] ? { customer: customers[0] } : {}),
+      description: parseDescription(text),
+      date,
+      time: time ?? "09:00",
+      ...(parsePrice(text) !== undefined ? { price: parsePrice(text)!, currency: "EUR" } : {}),
+      suggestedAction: "CREATE_JOB",
+      source: "local",
+    };
+  }
+
+  const answer = answerQuestion(text, mode, state);
+  return {
+    intent: "UNKNOWN",
+    confidence: 0.3,
+    answer:
+      answer ??
+      "Nisam uspela da razumem. Probaj npr. „Sutra u deset idem kod Marka Petrovića da popravim bojler, cena 120 evra.“",
+    suggestedAction: answer ? "ANSWER" : "UNKNOWN",
+    source: "local",
+  };
+}

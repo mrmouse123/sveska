@@ -1,0 +1,13 @@
+node_modules
+dist
+.output
+.nitro
+.tanstack
+.env
+.env.local
+*.log
+
+# Scratch iz sesija provere (esbuild probe skripte, privremeni ispisi)
+.probe/
+# Lokalne dozvole/podesavanja Claude Code-a, vezane za ovu masinu
+.claude/settings.local.json
