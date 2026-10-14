@@ -170,17 +170,25 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       }
 
       let next: DemoState | null = null;
+      // „Baza je prazna" i „čitanje je palo" MORAJU da se razlikuju. Oba su
+      // ranije davala `next === null`, pa je jedan neuspeo upit na novom uređaju
+      // (prazan localStorage) pokretao seed koji upisuje demo podatke preko
+      // pravih — ID-jevi su fiksni (`j-s1`, `c-marko`…), pa su se cene, statusi
+      // i telefoni vraćali na demo vrednosti. Tiho, uz jedan console.warn.
+      let remoteFailed = false;
       try {
         const remote = await loadStateFromSupabase();
         // Podsetnici su lokalni i ne postoje u bazi, pa se zadržavaju sa uređaja.
         if (remote) next = { ...remote, notifications: local?.notifications ?? [] };
       } catch (err) {
+        remoteFailed = true;
         console.warn("[sveska] Supabase load failed:", err);
       }
       next ??= local;
 
       if (!alive) return;
-      needsSeedWrite.current = next === null;
+      // Seed samo kad pouzdano znamo da nalog nema nijedan red.
+      needsSeedWrite.current = next === null && !remoteFailed;
       const resolved = next ?? createInitialState();
       stateRef.current = resolved;
       setState(resolved);

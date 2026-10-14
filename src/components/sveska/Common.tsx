@@ -157,14 +157,20 @@ export function JobDetailDialog({
             <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Status
             </p>
+            {/*
+              OTKAZANO je izdvojeno i traži potvrdu. Ranije je stajalo odmah do
+              ZAVRŠENO u istom redu pilula od ~22px, upis je išao pravo u bazu,
+              a undo ne postoji — promašaj palcem u rukavicama je otkazivao
+              posao. Mete su podignute na 36px (`py-2`, `min-h-9`).
+            */}
             <div className="flex flex-wrap gap-2">
-              {STATUSES.map((s) => (
+              {STATUSES.filter((s) => s !== "OTKAZANO").map((s) => (
                 <button
                   key={s}
                   type="button"
                   onClick={() => setJobStatus(current.id, s)}
                   className={cn(
-                    "rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors",
+                    "min-h-9 rounded-full border px-4 py-2 text-xs font-semibold transition-colors",
                     current.status === s
                       ? "border-primary bg-primary text-primary-foreground"
                       : "border-border hover:bg-secondary",
@@ -173,6 +179,25 @@ export function JobDetailDialog({
                   {s}
                 </button>
               ))}
+            </div>
+            <div className="mt-3 border-t border-border pt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (current.status === "OTKAZANO") return;
+                  if (window.confirm(`Otkazati posao „${current.description}"?`)) {
+                    setJobStatus(current.id, "OTKAZANO");
+                  }
+                }}
+                className={cn(
+                  "min-h-9 rounded-full border px-4 py-2 text-xs font-semibold transition-colors",
+                  current.status === "OTKAZANO"
+                    ? "border-destructive bg-destructive text-destructive-foreground"
+                    : "border-destructive/40 text-destructive hover:bg-destructive/10",
+                )}
+              >
+                OTKAZANO
+              </button>
             </div>
           </div>
           <div className="flex items-center justify-between rounded-xl bg-secondary p-3">
@@ -271,12 +296,37 @@ export function NewJobDialog({ mode, trigger }: { mode: Mode; trigger?: React.Re
     });
     setWarning(null);
     setOpen(false);
-    setDescription("");
-    setPrice("");
+    reset();
   };
 
+  /**
+   * Dijalog je trajno montiran unutar `DialogTrigger`, pa stanje preživi
+   * zatvaranje. Ranije su se brisali samo opis i cena, pa je sledeći posao tiho
+   * nasleđivao ISTOG klijenta, ISTO vreme i ISTU adresu — a provera zauzetosti
+   * radi samo za radnika, pa u SOLO režimu nije bilo ni upozorenja.
+   */
+  function reset() {
+    setCustomer(state.customers[0]?.name ?? "");
+    setDescription("");
+    setDate(today());
+    setTime("09:00");
+    setLocation("");
+    setPrice("");
+    setStatus("ZAKAZANO");
+    setAssignee(mode === "solo" ? "solo:w-petar" : "none:");
+    setWarning(null);
+  }
+
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        // Reset i pri otvaranju: `date` se inicijalizuje jednom, pri montiranju,
+        // pa je telefon ostavljen preko noći nudio jučerašnji datum.
+        if (v) reset();
+        setOpen(v);
+      }}
+    >
       <DialogTrigger asChild>
         {trigger ?? <Button className="font-semibold">+ NOVI POSAO</Button>}
       </DialogTrigger>

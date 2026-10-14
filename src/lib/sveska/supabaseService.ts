@@ -17,10 +17,26 @@ export interface SupabaseConfig {
 }
 
 export function getSupabaseConfig(): SupabaseConfig | null {
-  const url = import.meta.env["VITE_SUPABASE_URL"] as string | undefined;
-  const anonKey = import.meta.env["VITE_SUPABASE_ANON_KEY"] as string | undefined;
+  const url = (import.meta.env["VITE_SUPABASE_URL"] as string | undefined)?.trim();
+  const anonKey = (import.meta.env["VITE_SUPABASE_ANON_KEY"] as string | undefined)?.trim();
   if (!url || !anonKey) return null;
-  return { url, anonKey };
+
+  // Oblik se proverava ovde, jer pokvarena vrednost inače stiže do `fetch`-a kao
+  // HTTP zaglavlje i ruši ga sa „Failed to execute 'fetch' on 'Window': Invalid
+  // value" — poruka iz koje se ne vidi šta je uzrok. Desilo se u produkciji:
+  // u tajnu je ušao ceo blok sa URL-om i prelomom reda umesto samog ključa.
+  if (!/^https:\/\/[a-z0-9-]+\.supabase\.co\/?$/i.test(url)) {
+    console.error(`[sveska] VITE_SUPABASE_URL ne liči na Supabase adresu: ${JSON.stringify(url.slice(0, 60))}`);
+    return null;
+  }
+  if (!/^eyJ[\w-]+\.[\w-]+\.[\w-]+$/.test(anonKey)) {
+    console.error(
+      `[sveska] VITE_SUPABASE_ANON_KEY nije JWT (dužina ${anonKey.length}, počinje sa ${JSON.stringify(anonKey.slice(0, 6))}). ` +
+        "Očekuje se jedan red oblika eyJ….….…, bez URL-a i bez preloma reda.",
+    );
+    return null;
+  }
+  return { url: url.replace(/\/$/, ""), anonKey };
 }
 
 let client: SupabaseClient | null = null;
