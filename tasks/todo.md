@@ -218,28 +218,45 @@ Vercel ostaje kao kasnija opcija — SPA build mu ne smeta, samo `BASE` ide na "
 
 ## Rizik koji ostaje: Pages servira na podputanji `/sveska/`
 Sve apsolutne putanje pretpostavljaju root. Nađeno i za ispravku:
-- [ ] `src/routes/__root.tsx:63` — `<a href="/">` u ErrorComponent-u
-- [ ] `src/routes/__root.tsx` — `{ rel: "icon", href: "/favicon.svg" }`
-- [ ] `vite.config.ts` — `base`, i `tanstackStart({ spa: { enabled: true } })`
+- [x] `src/routes/__root.tsx:63` — `<a href="/">` u ErrorComponent-u
+- [x] `src/routes/__root.tsx` — `{ rel: "icon", href: "/favicon.svg" }`
+- [x] `vite.config.ts` — `base`, i `tanstackStart({ spa: { enabled: true } })`
       (opcija postoji u instaliranoj verziji: `spa: { enabled, maskPath, prerender }`)
-- [ ] `src/router.tsx` — `basepath`
-- [ ] `BASE` kao jedna konstanta, da prelaz na Vercel bude jedan red
-- [ ] `404.html` = kopija `index.html` (Pages fallback za duboke linkove),
+- [x] `src/router.tsx` — `basepath`
+- [x] `BASE` kao jedna konstanta, da prelaz na Vercel bude jedan red
+- [x] `404.html` = kopija `index.html` (Pages fallback za duboke linkove),
       u build koraku a ne ručno
 
 ## Dokaz pre nego što se dirne git
-- [ ] `npm run build`, pa pogledati ŠTA je stvarno na disku (ne pretpostavljati)
-- [ ] Servirati lokalno pod `/sveska/` i proveriti u pregledaču:
+- [x] `npm run build`, pa pogledati ŠTA je stvarno na disku (ne pretpostavljati)
+- [x] Servirati lokalno pod `/sveska/` i proveriti u pregledaču:
       `/sveska/`, `/sveska/auth`, i **refresh na `/sveska/radnik`** (pravi test fallback-a)
 
 ## Pre prvog commit-a (ne posle)
-- [ ] `DEPLOY.md` — lozinke test naloga u čistom tekstu; obrisati
-- [ ] `DEPLOY.md` korak 7 — `OPENAI_API_KEY` → `ANTHROPIC_API_KEY`
-- [ ] `.gitignore` — dodati `.probe/`, `.claude/settings.local.json`
-- [ ] NE commit-ovati `.output/` (već je u .gitignore); publikovanje preko
+- [x] `DEPLOY.md` — lozinke test naloga u čistom tekstu; obrisati
+- [x] `DEPLOY.md` korak 7 — `OPENAI_API_KEY` → `ANTHROPIC_API_KEY`
+- [x] `.gitignore` — dodati `.probe/`, `.claude/settings.local.json`
+- [x] NE commit-ovati `.output/` (već je u .gitignore); publikovanje preko
       GitHub Actions iz `main`, ne commit-ovanjem build artefakata
 
 ## Koraci koje mora Jovan (ne mogu kroz MCP)
 - [ ] Napraviti prazan repo `sveska` na github.com, ili `gh auth login`
       (`gh` je instaliran ali neprijavljen; `git push` radi preko Credential Manager-a)
 - [ ] Settings → Pages → izvor: GitHub Actions
+
+## Urađeno i dokazano (2026-10-14)
+- SPA build radi; `.output/public/` sadrži index.html, 404.html, .nojekyll, assets.
+- Shell nosi `/sveska/` na svakom assetu.
+- Lokalni simulator Pages-a: `/sveska/` 200; `/sveska/auth` i `/sveska/radnik`
+  404+shell (isto kao Pages); svi asseti 200.
+- U pregledaču: početna se iscrtava, `/sveska/auth` daje prijavu, `/sveska/radnik`
+  se diže i preusmerava na `/sveska/auth` → basepath važi i u preusmerenjima.
+- typecheck čist; lint 0 grešaka (6 starijih fast-refresh upozorenja).
+- Dva commita: `5f451ae` (SPA + prvi commit), `184d11c` (DEPLOY.md).
+- `mrmouse123.github.io/gradnjaos/` → 200, obrazac adrese potvrđen.
+- `github.com/mrmouse123/sveska` → 404, repo još ne postoji.
+
+## NIJE dokazano
+- Prijava od početka do kraja (ne kucam lozinke u polja) — Jovanov korak A6.
+- Da `npm ci` + build prolaze na ubuntu-u — vidi se na prvom Actions run-u.
+- AI put (čeka ANTHROPIC_API_KEY, Faza 8).
