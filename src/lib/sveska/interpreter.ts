@@ -2,14 +2,28 @@ import type { AiResult, DemoState, Mode } from "./types";
 import { daysFromNow, today, tomorrow } from "./data";
 import { answerQuestion } from "./queries";
 
+/** Ćirilica -> latinica. Srpski se piše oba pisma, a ASR vraća i jedno i drugo. */
+const CYRILLIC: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", ђ: "dj", е: "e", ж: "z", з: "z",
+  и: "i", ј: "j", к: "k", л: "l", љ: "lj", м: "m", н: "n", њ: "nj", о: "o",
+  п: "p", р: "r", с: "s", т: "t", ћ: "c", у: "u", ф: "f", х: "h", ц: "c",
+  ч: "c", џ: "dz", ш: "s",
+};
+
+/**
+ * Sve na goli ASCII. Ranije je pokrivalo samo šđčćž, pa su Tóth, Müller i
+ * ćirilica ispadali kao RAZDVAJAČI reči — ime se lomilo na komade („Zoltána"
+ * -> „zolt", „na"), a novi klijent dobijao izmešano ime.
+ * Slovo mora da ostane slovo da bi granice reči ostale iste.
+ */
 const deburr = (s: string) =>
   s
     .toLowerCase()
-    .replaceAll("š", "s")
+    .replace(/[\u0400-\u04ff]/g, (c) => CYRILLIC[c] ?? c)
     .replaceAll("đ", "dj")
-    .replaceAll("č", "c")
-    .replaceAll("ć", "c")
-    .replaceAll("ž", "z");
+    .replaceAll("ß", "ss")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 
 const WORD_HOURS: Record<string, string> = {
   sedam: "07:00",
@@ -145,7 +159,11 @@ function stems(name: string): string[] {
  */
 function matchScore(token: string, name: string): number {
   let best = 0;
-  for (const s of stems(name)) if (token.startsWith(s)) best = Math.max(best, s.length);
+  for (const s of stems(name)) {
+    // Padežni nastavak u srpskom je kratak (-a, -u, -om, -ima). Bez ove granice
+    // je „Anastasije" bilo padež od „Ana", a „Milan" od „Mila".
+    if (token.startsWith(s) && token.length - s.length <= 3) best = Math.max(best, s.length);
+  }
   return best;
 }
 
@@ -217,9 +235,33 @@ function splitByKod(text: string) {
 
 const vowelStem = (w: string) => w.replace(/[aeiou]$/, "");
 
-/** Ime novog klijenta od izgovorenih reci. Ostaje u padezu — korisnik ga preimenuje. */
+/**
+ * Ime novog klijenta iz izgovorenog, vraćeno u nominativ koliko se pouzdano može.
+ *
+ * Prezime (poslednja reč): genitiv dodaje „a" na suglasnik — „Nikolića" ->
+ * „Nikolić", „Tótha" -> „Tóth". Ime (ostale reči): žensko „-e" je genitiv od
+ * „-a" — „Ane" -> „Ana", „Milice" -> „Milica".
+ *
+ * Muško ime na „-a" se NE dira: „Marka" je genitiv i od „Marko" i od „Marka",
+ * a „Jovana" i od „Jovan" i od „Jovana". Pogrešan nominativ je gori od padeža,
+ * jer padež korisnik prepozna i preimenuje, a pogrešno ime izgleda tačno.
+ */
+function toNominative(words: string[]): string[] {
+  const vowel = /[aeiouAEIOU]$/;
+  return words.map((w, i) => {
+    const last = i === words.length - 1;
+    if (last && w.length > 3 && /a$/i.test(w) && !vowel.test(w.slice(0, -1))) {
+      return w.slice(0, -1);
+    }
+    if (!last && w.length > 2 && /e$/i.test(w)) return `${w.slice(0, -1)}a`;
+    return w;
+  });
+}
+
 const titleCase = (words: string[]) =>
-  words.map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  toNominative(words)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
 
 /** Delovi imena koji nose informaciju. "Ana" je kratko ali razlikuje — ulazi. */
 const nameParts = (name: string) =>
@@ -313,9 +355,27 @@ function matchCustomers(text: string, state: DemoState): string[] {
 
 
 
-function matchWorkers(text: string, state: DemoState): string[] {
-  const { workerTokens } = splitByKod(text);
-  return claimBy(workerTokens, state.workers, (w) => [w.name]).map((w) => w.name);
+/**
+ * `taken` su klijenti koje je rečenica već imenovala. Jedan token imenuje jednu
+ * osobu: bez „kod" su obe strane gledale celu rečenicu, pa je „Zakaži Ani
+ * Marković…" dodeljivalo radnika Marka, a „Napravi tim za Marka Petrovića"
+ * pravilo tim od imena KLIJENTA. Kad „kod" postoji, podela je već napravljena.
+ */
+function matchWorkers(text: string, state: DemoState, taken: string[]): string[] {
+  const { workerTokens, kodScoped } = splitByKod(text);
+  const free = kodScoped
+    ? workerTokens
+    : workerTokens.filter((tok) => {
+        // Samo NAJBOLJI klijent, ne svi usput zakačeni: bez „kod" `matchCustomers`
+        // olako proglasi klijentom svakoga ko liči, pa je „napravi tim od Petra,
+        // Milana i Jovana" gubilo Milana — on je i radnik i klijent (Milan Ilić).
+        const asCustomer = taken[0]
+          ? Math.max(0, ...nameParts(taken[0]).map((p) => partScore(tok, p)))
+          : 0;
+        const asWorker = Math.max(0, ...state.workers.map((w) => matchScore(tok, w.name)));
+        return asWorker > asCustomer;
+      });
+  return claimBy(free, state.workers, (w) => [w.name]).map((w) => w.name);
 }
 
 function matchTeams(text: string, state: DemoState): string[] {
@@ -326,8 +386,9 @@ function matchTeams(text: string, state: DemoState): string[] {
   return out.filter((n) => state.teams.some((tm) => tm.name === n));
 }
 
+/** `\b` je bitno: bez njega je „STAvi Marka…" i „STAni, otkaži…" bilo pitanje. */
 const isQuestion = (t: string) =>
-  /^(ko |koji|koliko|kada|gde|sta|da li|ima li)/.test(deburr(t).trim()) || t.includes("?");
+  /^(ko|koji|koliko|kada|gde|sta|da li|ima li)\b/.test(deburr(t).trim()) || t.includes("?");
 
 /** Deterministic local interpreter used when the AI service is unavailable. */
 export function interpretLocal(text: string, mode: Mode, state: DemoState): AiResult {
@@ -335,7 +396,7 @@ export function interpretLocal(text: string, mode: Mode, state: DemoState): AiRe
   const date = parseDate(text);
   const time = parseTime(text);
   const customers = matchCustomers(text, state);
-  const workers = matchWorkers(text, state);
+  const workers = matchWorkers(text, state, customers);
   const teams = matchTeams(text, state);
 
   if (isQuestion(text)) {
@@ -370,14 +431,32 @@ export function interpretLocal(text: string, mode: Mode, state: DemoState): AiRe
 
   // Multi assignment (zadruga)
   if (mode === "zadruga" && (teams.length >= 2 || (teams.length >= 1 && customers.length >= 2))) {
-    const assignments = teams.map((team, i) => ({
-      team,
-      customer: customers[i] ?? customers[0] ?? "Nepoznat klijent",
-      time: time ?? "08:00",
-      date,
-      description:
-        team === "ELEKTRIČARI" ? "Električni radovi" : "Vodoinstalaterski radovi",
-    }));
+    // Rečenica se deli na delove po „, a" / „ a", pa svaki deo nosi SVOJ tim,
+    // klijenta i vreme. Ranije su timovi dodavani tvrdo kodiranim redom a parili
+    // se po indeksu, pa je „pošalji ELEKTRIČARE kod X, a VODOINSTALATERE kod Y"
+    // davalo obrnuto; drugo vreme se uopšte nije čitalo.
+    const clauses = text.split(/,\s*a\s+|\s+a\s+/i);
+    const byClause = clauses.flatMap((clause) =>
+      matchTeams(clause, state).map((team) => ({
+        team,
+        customer: matchCustomers(clause, state)[0] ?? customers[0] ?? "Nepoznat klijent",
+        time: parseTime(clause) ?? time ?? "08:00",
+        date,
+        description:
+          team === "ELEKTRIČARI" ? "Električni radovi" : "Vodoinstalaterski radovi",
+      })),
+    );
+    const assignments =
+      byClause.length >= 2
+        ? byClause
+        : teams.map((team, i) => ({
+            team,
+            customer: customers[i] ?? customers[0] ?? "Nepoznat klijent",
+            time: time ?? "08:00",
+            date,
+            description:
+              team === "ELEKTRIČARI" ? "Električni radovi" : "Vodoinstalaterski radovi",
+          }));
     return {
       intent: "MULTI_ASSIGNMENT",
       confidence: 0.92,

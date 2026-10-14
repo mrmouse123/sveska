@@ -81,10 +81,12 @@ for (const [input, want] of lk) {
 }
 
 console.log("\n--- interpreter (sloj 1) ---");
+// Prezime novog klijenta dolazi u nominativu (N4): „Nikolica" -> „Nikolic".
+// Ime na „-a" ostaje, jer je „Marka" genitiv i od „Marko" i od „Marka".
 const it: [string, Mode, string][] = [
-  ["Sutra u deset idem kod Marka Nikolica da popravim slavinu.", "solo", "Marka Nikolica"],
-  ["Sutra u deset idem kod Ane Petrovic da montiram klimu.", "solo", "Ane Petrovic"],
-  ["Sutra u deset idem kod Jovana Jovanovica da zamenim bojler.", "solo", "Jovana Jovanovica"],
+  ["Sutra u deset idem kod Marka Nikolica da popravim slavinu.", "solo", "Marka Nikolic"],
+  ["Sutra u deset idem kod Ane Petrovic da montiram klimu.", "solo", "Ana Petrovic"],
+  ["Sutra u deset idem kod Jovana Jovanovica da zamenim bojler.", "solo", "Jovana Jovanovic"],
   ["Sutra u sedamnaest idem kod Ane Markovic da montiram klimu.", "solo", "Ana Marković"],
   ["Sutra u deset idem kod Marka Petrovica da popravim bojler.", "solo", "Marko Petrović"],
   ["Zakazi kod Jovanovic Company u osamnaest servis kotlarnice.", "solo", "Jovanović Company"],

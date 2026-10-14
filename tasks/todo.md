@@ -612,3 +612,39 @@ proverio izvršavanjem pre nego što sam dirao kod.
 - `tasks/probe/regress.ts` — rečenice koje su JEDNOM radile pa ih je moja
   popravka pokvarila. Držati zelenim.
 - `tasks/probe/patch.ts` — tvrdnja da upis u nepostojeći red puca.
+
+# Faza 12 — zatvaranje svih preostalih nalaza (2026-10-14)
+
+Redosled bira RIZIK, ne lakoću: čiste funkcije prve (brza provera, nula uticaja
+na živ sajt), baza poslednja (živa je, i greška se vidi tek kod korisnika).
+
+## A. Jezik — čiste funkcije, provera izvršavanjem
+- [ ] N5 `/^sta/` guta komande: „Stavi Marka…", „Stani, otkaži…" -> ANSWER
+- [ ] N1 `deburr` pokriva samo šđčćž; Tóth/Müller/ćirilica razbijaju tokene
+- [ ] N2 `vowelStem`/`stems` spajaju različite ljude (Rada/Rade, Ana/Anastasija)
+- [ ] N3 delovi imena kraći od 3-4 znaka ispadaju (Pop, Vuk)
+- [ ] N4 nova imena ostaju u padežu („Marka Nikolića")
+- [ ] N6 multi-dodela: parovi zamenjeni kad su električari prvi; drugo vreme pada
+- [ ] N7 bez „kod" klijent se uzima za radnika
+
+## B. Klijent — integritet podataka
+- [ ] C1 mrežni prekid upiše demo preko pravih podataka
+- [ ] C3 `supabaseService` ne proverava oblik ključa (nerazumljiva fetch greška)
+- [ ] C2 dijalog „Novi posao" pamti prethodni posao
+
+## C. UI — bezbednost dodira
+- [ ] U1 ZAVRŠENO i OTKAZANO susedni, ~22px, bez potvrde i undo
+- [ ] U2 shell nosi meta tagove rute `/` za sve rute
+
+## D. Baza — živa, menja se poslednja i uz dvostranu proveru
+- [ ] S3 `CHECK` na `jobs.status` (pre toga proveriti postojeće vrednosti)
+- [ ] S4 indeksi na `jobs(assignee_id)`, `jobs(customer_id)`; `my_*` u `(select …)`
+- [ ] S2 `remove_member` RPC + DELETE polisa na `org_members`
+- [ ] S1 tier se proverava na serveru, ne samo u pregledaču
+
+## Blokirano, nije moje
+- [ ] S5 `sveska_init_schema` — traži `supabase db pull` i lozinku baze
+
+## Pravilo za ovu fazu (iz lekcije 20)
+Za svaku popravku proba se piše PRE nje i mora da bude crvena, pa tek onda
+zelena. Proba napisana posle popravke meri ono što već znam.
