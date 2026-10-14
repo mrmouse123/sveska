@@ -16,6 +16,9 @@ Sync probe traži stub za `import.meta.env`:
 - `t.ts` — `parseTime` i tri reprezentativne rečenice
 - `time.ts` — 31 tvrdnja o `parseTime` i ceni, uključujući lažne pozitive
   („sedamdeset evra" nije 07:00, „cena 120.50 evra" nije 20:50) i opseg 0-23
+- `names2.ts` — 23 tvrdnje o imenima: `lookupCustomer` (tekst IZVUČEN iz
+  store.tsx skriptom, ne prepisan) + interpreter + slučaj kad radnik i klijent
+  imaju isti padežni oblik („Pošalji Marka kod Marka Petrovića")
 - `sync.ts` — serijalizacija upisa u Supabase sa stub-ovanim `fetch` (4 tvrdnje)
 
 Uvozi su relativni (`../../src/...`), a esbuild ih razrešava iz putanje fajla —

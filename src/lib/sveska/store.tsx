@@ -31,19 +31,50 @@ const STORAGE_KEY = "sveska-state-v1"; // namespaced per user: `${STORAGE_KEY}:$
 
 const newId = () => Math.random().toString(36).slice(2, 10);
 
-/** Čista pretraga klijenta po imenu — radi nad prosleđenim stanjem, bez zavisnosti od React-a. */
+/** Bez dijakritike i malim slovima — "Petrovic" i "Petrović" su isti upit. */
+const foldName = (s: string) =>
+  s
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/gi, "d")
+    .toLowerCase()
+    .trim();
+
+const partsOf = (s: string) => foldName(s).split(/[^a-z0-9]+/).filter((p) => p.length >= 3);
+
+/**
+ * Čista pretraga klijenta po imenu — radi nad prosleđenim stanjem, bez zavisnosti od React-a.
+ *
+ * Stara verzija je poredila SAMO ime (`n.includes(c.name.split(" ")[0])`), pa je
+ * 7 od 9 običnih srpskih imena pogrešno slepljivala: "Marko Nikolić",
+ * "Marko Jovanović", "Nikola Marković" i "Milan Marković" su svi završavali kao
+ * "Marko Petrović", a "Jovan Jovanović" kao firma "Jovanović Company".
+ * Istovremeno "Petrovic" bez dijakritike NIJE nalazio Petrovića.
+ *
+ * Sada: svaki izgovoreni deo mora da se nađe u kandidatu, i to RAZLIČITIM
+ * delovima njegovog imena — zato "Jovan Jovanović" ne poklapa "Jovanović
+ * Company". Ako ništa ne odgovara, poziva se stvaranje novog klijenta.
+ */
 function lookupCustomer(s: DemoState, name: string): string | undefined {
-  const n = name.trim().toLowerCase();
+  const n = foldName(name);
   if (!n) return undefined;
-  return (
-    s.customers.find((c) => c.name.toLowerCase() === n)?.id ??
-    s.customers.find(
-      (c) => c.name.toLowerCase().includes(n) || n.includes(c.name.toLowerCase().split(" ")[0]!),
-    )?.id ??
-    s.customers.find((c) =>
-      n.split(" ").some((p) => p.length > 3 && c.name.toLowerCase().includes(p)),
-    )?.id
-  );
+
+  const exact = s.customers.find((c) => foldName(c.name) === n);
+  if (exact) return exact.id;
+
+  const want = partsOf(name);
+  if (!want.length) return undefined;
+
+  return s.customers.find((c) => {
+    const have = partsOf(c.name);
+    const used = new Set<number>();
+    return want.every((w) => {
+      const i = have.findIndex((p, idx) => !used.has(idx) && (p.startsWith(w) || w.startsWith(p)));
+      if (i < 0) return false;
+      used.add(i);
+      return true;
+    });
+  })?.id;
 }
 
 interface Ctx {
