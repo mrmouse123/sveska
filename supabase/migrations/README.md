@@ -39,5 +39,21 @@ prefiksu, pa bi se migracija sa drugačijim prefiksom primenila ponovo.
 (`tighten_select_policies` je prvo bio zapisan kao `20261014120000`, a u bazi
 stoji `20261014103542` — ispravljeno.)
 
-Ostaje otvoreno: `sveska_init_schema` (`20260826191413`) nema fajl u repou.
-Traži `supabase db pull` i lozinku baze.
+`sveska_init_schema` (`20260826191413`) i dalje nema fajl ovde, ali repo više
+nije bez šeme: puna šema je izvučena iz kataloga u
+**`supabase/schema/current.sql`** (2026-10-14).
+
+Taj fajl NIJE migracija i ne sme da uđe u ovaj direktorijum — migracije bi iste
+objekte pravile po drugi put. Koristi se na praznoj bazi:
+
+    psql "<connection-string>" -f supabase/schema/current.sql
+
+pa se postojeće migracije označe kao primenjene da ih `db push` ne ponovi.
+
+Potpunost je proverena brojanjem prema katalogu, ne na oko: 10 tabela,
+77 kolona, 37 ograničenja, 8 indeksa van ograničenja, 12 funkcija,
+7 okidača (6 u `public` + `on_auth_user_created` na `auth.users`),
+RLS na svih 10 tabela, 28 polisa. Svih osam brojeva se poklapa.
+
+Pravi `supabase db pull` i dalje vredi uraditi kad bude pri ruci lozinka baze —
+on bi ovo zamenio i omogućio squash migracija u jednu baznu.

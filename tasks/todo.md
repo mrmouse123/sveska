@@ -643,7 +643,8 @@ na živ sajt), baza poslednja (živa je, i greška se vidi tek kod korisnika).
 - [x] S1 tier se proverava na serveru, ne samo u pregledaču
 
 ## Blokirano, nije moje
-- [ ] S5 `sveska_init_schema` — traži `supabase db pull` i lozinku baze
+- [x] S5 `sveska_init_schema` — zaobiđeno: puna šema izvučena iz kataloga u
+      `supabase/schema/current.sql`, potpunost proverena brojanjem (8/8 grupa)
 
 ## Pravilo za ovu fazu (iz lekcije 20)
 Za svaku popravku proba se piše PRE nje i mora da bude crvena, pa tek onda
