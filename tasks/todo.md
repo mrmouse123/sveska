@@ -552,3 +552,26 @@ Provereno na živom sajtu, ne na pretpostavci:
 Upozorenja iz log-a, nisu prekidna: `actions/checkout@v4` i `setup-node@v4`
 ciljaju Node 20 (deprecated, forsiraju se na 24); `ubuntu-latest` prelazi na
 Ubuntu 26 od 19.10.2026.
+
+## Incident: prijava je padala posle objave (2026-10-14)
+
+Simptom: `Failed to execute 'fetch' on 'Window': Invalid value` na /sveska/auth,
+bez obzira na kredencijale.
+
+Uzrok: u Actions tajnu `VITE_SUPABASE_ANON_KEY` je ušao ceo blok
+(`https://...supabase.co` + prelom reda + `VITE_SUPABASE_ANON_KEY=` + JWT).
+Vite to ugradi u bundle, Supabase klijent stavi u `apikey` zaglavlje, a prelom
+reda čini zaglavlje nevalidnim — `fetch` pukne pre slanja zahteva.
+
+Rešeno: tajna prepravljena na čist JWT, deploy ponovljen.
+
+Provereno posle popravke:
+  bundle: VITE_SUPABASE_ANON_KEY = 208 znakova, počinje `eyJ`, bez preloma
+          reda, bez `https://`, bez znakova nedozvoljenih u zaglavlju
+  auth/v1/settings sa anon ključem -> HTTP 200 (ključ važeći, servis dostupan)
+  rest/v1/{jobs,customers,workers} kao anon -> 200 i prazan niz (RLS drži)
+
+- [ ] NALAZ: `supabaseService` ne proverava oblik ključa. Pokvarena vrednost
+      daje nerazumljivu `fetch` grešku umesto jasne poruke. Mala popravka:
+      odbaciti ključ koji ne liči na JWT i prikazati „Supabase nije ispravno
+      konfigurisan" umesto da se pusti do `fetch`-a.

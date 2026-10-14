@@ -68,6 +68,20 @@ prepoznavanje govora. Dozvola za jedan test nije dozvola za sledeći.
 **14. Lozinke ne kucam u polja. Naloge pravi Jovan.**
 Važi i za test naloge na localhost-u — u ovoj sesiji je tako postavljeno.
 
+**17. Kad prijava vrati „Failed to execute 'fetch' on 'Window': Invalid value",
+kriv je OBLIK ključa, ne kredencijali.**
+U GitHub tajnu `VITE_SUPABASE_ANON_KEY` ušao je ceo blok — URL, prelom reda i
+`VITE_SUPABASE_ANON_KEY=` prefiks. Ta vrednost ide u `apikey` HTTP zaglavlje,
+a zaglavlje ne sme da sadrži prelom reda, pa `fetch` pukne pre slanja.
+Proveravati objavljeni bundle, ne lokalni `.env`: `VITE_*` se ugrađuje u
+trenutku build-a, pa lokalno može biti ispravno a objavljeno pokvareno.
+
+**18. Kad diktiram vrednost koju neko lepi, dam komandu koja je stavlja u
+clipboard — ne opis šta da iseče.**
+Rekao sam „red 2, kopiraj sve posle znaka =", a on je nalepio iz moje poruke
+gde su stajala oba reda. Komanda sa `Set-Clipboard` + provera dužine i broja
+redova ne ostavlja prostor za grešku.
+
 ## Dizajn
 
 **15. Kad popravka parkira grešku bez ičega što je prazni, popravka je pogrešna.**
