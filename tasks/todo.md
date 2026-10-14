@@ -496,3 +496,35 @@ Nalazi: 12 potvrđenih grupa (A-L). Ništa u kodu nije menjano — tražen je pr
 - `voiceService` nalaz da se pravilo 10 s ne naoruža pre prve reči NISAM
   proverio sam — traži lažni SpeechRecognition; prijavljujem kao agentski nalaz.
 - AI putanja (čeka ANTHROPIC_API_KEY).
+
+# Review popravki (2026-10-14, posle pregleda)
+
+Urađeno, svako sa dokazom izvršavanjem i u svom commit-u:
+- efa6625  RLS: radnik vidi samo klijente sa SVOJIH poslova (2 od 5), vlasnik
+           nepromenjeno (29/5/6/2/1/6). Dvostrana provera prijavom kao oba.
+           + tri migracije preimenovane, redosled zavisnosti ispravljen.
+- 697edbb  parseTime/parsePrice: vreme samo uz „u", opseg 0-23, cena sa
+           decimalama i hiljadama. time.ts 31/31.
+- e3325a8  Imena: `owned` po poziciji, `coversAll`, `canBeName`, `vowelStem`,
+           `lookupCustomer` prepisan. names2.ts 23/23.
+- 09274cf  Izmena posla šalje samo patch. patch.ts 10/10 meri telo zahteva.
+           + popravljena zaostala sync.ts proba (4/4).
+
+Dve regresije koje je PROBA uhvatila, ne čitanje:
+- „kod Ane Marković" je posle prve verzije `coversAll` padalo na nov klijent
+  („ane" vs „ana" se razlikuju samo u zadnjem samoglasniku).
+- „kod Petrovića da popravi" je davalo klijenta „Petrovica Da".
+Bez probe bi oba otišla u produkciju. Ovo je argument za `names2.ts`.
+
+Ostaje otvoreno:
+- [ ] `sveska_init_schema` — traži `supabase db pull` i lozinku baze (Jovan)
+- [ ] git push — repo `mrmouse123/sveska` ne postoji; remote je dodat
+- [ ] Bez „kod" interpreter može uzeti klijenta za radnika; „kod" kao obična
+      reč krade mesto klijenta. Traži odluku o dizajnu, ne zakrpu.
+- [ ] Tier je UI katanac (0 polisa čita profiles) — preskakanje plaćanja
+- [ ] Radnik se ne može ukloniti (org_members bez DELETE polise)
+- [ ] `jobs.status` bez CHECK-a, i stiže u prompt vlasnika
+- [ ] Mrežni prekid upiše demo preko pravih podataka (loadStateFromSupabase
+      ne razlikuje „prazno" od „palo")
+- [ ] Dijalog „Novi posao" pamti prethodni posao; ZAVRŠENO/OTKAZANO susedni
+- [ ] Shell nosi meta tagove rute `/` za sve rute
