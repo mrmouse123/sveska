@@ -1,8 +1,13 @@
 import type { DemoState, Job, Mode } from "./types";
 import { formatDateSr, today, tomorrow } from "./data";
+import { deburr } from "./text";
 
+/** Decimale se prikazuju samo kad postoje: 120,50 je ostajalo €121. */
 export const eur = (n: number) =>
-  `€${n.toLocaleString("de-DE", { maximumFractionDigits: 0 })}`;
+  `€${n.toLocaleString("de-DE", {
+    minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
+    maximumFractionDigits: 2,
+  })}`;
 
 export const scopeJobs = (state: DemoState, mode: Mode) =>
   state.jobs.filter((j) => j.scope === mode);
@@ -93,7 +98,9 @@ export function searchAll(state: DemoState, q: string) {
 
 /** Answers business questions from current demo state. */
 export function answerQuestion(text: string, mode: Mode, state: DemoState): string | null {
-  const t = text.toLowerCase();
+  // deburr, ne samo lowercase. Bez toga „ko mi je DUŽAN“ nije pogađalo
+  // ključnu reč „dug“, a ni ASCII unos („zavrseni“) nije radio.
+  const t = deburr(text);
   const jobs = scopeJobs(state, mode);
   const line = (j: Job) =>
     `• ${j.time} — ${customerName(state, j.customerId)} — ${j.description}${
@@ -114,7 +121,14 @@ export function answerQuestion(text: string, mode: Mode, state: DemoState): stri
       ? `Sutra imaš ${list.length} ${list.length === 1 ? "posao" : "poslova"}:\n${list.map(line).join("\n")}`
       : "Sutra nema zakazanih poslova.";
   }
-  if (t.includes("duguje") || t.includes("nenaplać") || t.includes("dug")) {
+  if (
+    t.includes("duguj") ||
+    t.includes("duzan") ||
+    t.includes("duzn") ||
+    t.includes("potrazuj") ||
+    t.includes("nenaplac") ||
+    t.includes("dug")
+  ) {
     const unpaid = jobs.filter((j) => !j.paid && j.status !== "OTKAZANO");
     const byCustomer = new Map<string, number>();
     unpaid.forEach((j) =>
@@ -130,7 +144,7 @@ export function answerQuestion(text: string, mode: Mode, state: DemoState): stri
     const s = stats(state, mode);
     return `Ovog meseca: ${s.monthCount} poslova, naplaćeno ${eur(s.monthRevenue)}, nenaplaćeno ${eur(s.monthOutstanding)}.`;
   }
-  if ((t.includes("nisu završ") || t.includes("nezavrš") || t.includes("u toku")) && t.includes("posl")) {
+  if ((t.includes("nisu zavrs") || t.includes("nezavrs") || t.includes("u toku")) && t.includes("posl")) {
     const open = jobs.filter(isOpen);
     return open.length
       ? `Nezavršenih poslova: ${open.length}\n${open

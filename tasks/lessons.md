@@ -116,6 +116,18 @@ Tier se nije mogao zatvoriti kao „scope <= tier", jer demo seed svakom nalogu
 namerno upisuje `tim` i `zadruga` podatke. Upit nad živim podacima je to
 pokazao za dvadeset sekundi; da sam krenuo od polise, polomio bih seed.
 
+**25. Kad agentski nalaz označim kao „neproveren" i preskočim ga, zapišem ga
+tako da se vidi — jer se vraća kao prijava sa terena.**
+Protivnički pregled je našao da se pri ponovnom pokretanju prepoznavanja stari
+prepoznavač ne gasi, pa oba dopisuju u isti tekst. Prijavio sam to kao agentski
+nalaz koji nisam sam proverio, i nisam popravio. Vratilo se kao „na telefonu
+duplira sve što se kaže", sa dva uređaja.
+
+**26. Pre nego što zaključim da je nešto retko, pitam na kom uređaju.**
+Grana sa `r.start()` koji baci je na desktopu retka, a na Androidu PRAVILO —
+`continuous` tamo jedva radi, pa `onend` okida posle svake rečenice. Procena
+„retko" je bila tačna samo za uređaj na kom sam gledao.
+
 ## Dizajn
 
 **15. Kad popravka parkira grešku bez ičega što je prazni, popravka je pogrešna.**

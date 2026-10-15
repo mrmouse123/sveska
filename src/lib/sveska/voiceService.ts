@@ -127,6 +127,9 @@ export function createVoiceSession(cb: VoiceCallbacks) {
   function startRecognition() {
     const Ctor = getCtor();
     if (!Ctor) return;
+    // Nikad dva živa prepoznavača. Bez ovoga je stari ostajao vezan i nastavljao
+    // da dopisuje u isti `finalText`, pa se svaka rečenica pojavljivala dvaput.
+    stopRecognition();
     const r = new Ctor();
     rec = r;
     r.lang = "sr-RS";
@@ -134,11 +137,16 @@ export function createVoiceSession(cb: VoiceCallbacks) {
     r.interimResults = true;
     r.maxAlternatives = 1;
 
+    // Svaki rukovalac proverava da li je JOŠ aktuelan. Zamenjena instanca ume
+    // da ispali događaj i posle zamene — to je bio drugi izvor dupliranja.
+    const current = () => r === rec;
+
     r.onstart = () => {
-      if (active) setStatus("listening");
+      if (current() && active) setStatus("listening");
     };
 
     r.onresult = (event: unknown) => {
+      if (!current()) return;
       const e = event as {
         resultIndex: number;
         results: {
@@ -158,6 +166,7 @@ export function createVoiceSession(cb: VoiceCallbacks) {
     };
 
     r.onerror = (event: unknown) => {
+      if (!current()) return;
       const raw = (event as { error?: string }).error ?? "unknown";
       if (raw === "aborted") return;
       if (raw === "no-speech") return; // keep the session alive; 10s rule decides
@@ -173,13 +182,15 @@ export function createVoiceSession(cb: VoiceCallbacks) {
 
     r.onend = () => {
       // A browser session ending is NOT the end of the user's input.
-      if (!active || finished || permissionBlocked) return;
+      // Na Androidu `continuous` jedva radi, pa ovo okida posle SVAKE rečenice —
+      // ono što je na desktopu redak slučaj, na telefonu je pravilo.
+      if (!current() || !active || finished || permissionBlocked) return;
       try {
         r.start();
       } catch {
         // Some engines need a fresh instance after ending.
         setTimeout(() => {
-          if (active && !finished) startRecognition();
+          if (active && !finished && r === rec) startRecognition();
         }, 250);
       }
     };

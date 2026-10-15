@@ -126,3 +126,25 @@ check(
 console.log("");
 console.log(bad === 0 ? "SVE PROLAZI" : `${bad} pogresno`);
 if (bad > 0) process.exitCode = 1;
+
+console.log("\n=== Feedback sa terena: pitanja o dugu ===");
+{
+  const variants = [
+    "Ko mi je dužan?",
+    "Ko mi duguje?",
+    "Ko mi je dužan novac?",
+    "Ko mi duzan?",
+    "Koliko potražujem?",
+    "Koji poslovi nisu zavrseni?",
+    "Koji poslovi nisu završeni?",
+  ];
+  for (const v of variants) {
+    const r = interpretLocal(v, "solo", base);
+    const ok = r.suggestedAction === "ANSWER" && Boolean(r.answer) &&
+      !r.answer!.startsWith("Nisam sigurna");
+    if (!ok) bad++;
+    console.log(`${ok ? "OK  " : "LOSE"}  ${JSON.stringify(v)} -> ${JSON.stringify((r.answer ?? "").slice(0, 44))}`);
+  }
+}
+console.log("");
+console.log(bad === 0 ? "SVE PROLAZI" : `${bad} pogresno`);
