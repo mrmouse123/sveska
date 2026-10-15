@@ -8,6 +8,9 @@ export interface DemoActions {
     members: { workerId: string; responsibility: string }[],
   ) => { id: string; name: string };
   ensureCustomer: (name: string) => string;
+  setJobStatus: (id: string, status: Job["status"]) => void;
+  updateJob: (id: string, patch: Partial<Job>) => void;
+  addTeamMember: (teamId: string, workerId: string) => void;
   addNotification: (n: { icon: string; text: string; target?: { type: "job" | "customer" | "worker"; id: string } }) => void;
 }
 
@@ -102,7 +105,7 @@ export function executeAiResult(
           date: normDate(a.date ?? result.date),
           time: a.time ?? "08:00",
           location: customerAddress(state, customerId),
-          price: 0,
+          price: a.price ?? 0,
           status: "DODELJENO",
           paid: false,
           assigneeType: team ? "team" : worker ? "worker" : "none",
@@ -115,6 +118,49 @@ export function executeAiResult(
         });
       });
       return `Kreirano ${list.length} ${list.length === 1 ? "zadatak" : "zadatka"}.`;
+    }
+    case "CANCEL_JOB": {
+      const job = state.jobs.find((j) => j.id === result.jobId);
+      if (!job) return "Nisam našla taj posao.";
+      actions.setJobStatus(job.id, "OTKAZANO");
+      actions.addNotification({
+        icon: "✖️",
+        text: `Otkazan posao: ${job.description}.`,
+        target: { type: "job", id: job.id },
+      });
+      return `Otkazan posao „${job.description}" (${job.date} u ${job.time}).`;
+    }
+    case "UPDATE_JOB": {
+      const job = state.jobs.find((j) => j.id === result.jobId);
+      if (!job) return "Nisam našla taj posao.";
+      const patch: Partial<Job> = {
+        ...(result.time ? { time: result.time } : {}),
+        ...(result.date ? { date: normDate(result.date) } : {}),
+        ...(result.price !== undefined ? { price: result.price } : {}),
+      };
+      if (Object.keys(patch).length === 0) return "Nije bilo šta da se promeni.";
+      actions.updateJob(job.id, patch);
+      const parts = [
+        patch.date ? `datum ${patch.date}` : "",
+        patch.time ? `vreme ${patch.time}` : "",
+        patch.price !== undefined ? `cena ${patch.price}` : "",
+      ].filter(Boolean);
+      return `Izmenjen posao „${job.description}": ${parts.join(", ")}.`;
+    }
+    case "ADD_TEAM_MEMBER": {
+      const worker = findWorker(state, result.worker);
+      const team = findTeam(state, result.team);
+      if (!worker || !team) return "Nisam našla tog radnika ili tim.";
+      if (team.memberIds.includes(worker.id)) {
+        return `${worker.name} je već u timu ${team.name}.`;
+      }
+      actions.addTeamMember(team.id, worker.id);
+      actions.addNotification({
+        icon: "👷",
+        text: `${worker.name} je dodat u tim ${team.name}.`,
+        target: { type: "worker", id: worker.id },
+      });
+      return `${worker.name} je dodat u tim ${team.name}.`;
     }
     case "CREATE_MIXED_TEAM": {
       const members = (result.members ?? [])

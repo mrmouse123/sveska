@@ -85,6 +85,8 @@ export interface AiAssignment {
   time?: string | undefined;
   date?: string | undefined;
   description?: string | undefined;
+  /** Cena po dodeli; ranije je `CREATE_ASSIGNMENTS` uvek upisivao 0. */
+  price?: number | undefined;
 }
 
 export interface AiResult {
@@ -102,11 +104,16 @@ export interface AiResult {
   members?: { name: string; trade: string }[] | undefined;
   assignments?: AiAssignment[] | undefined;
   answer?: string | undefined;
+  /** Postojeći posao na koji se komanda odnosi (otkazivanje i izmena). */
+  jobId?: string | undefined;
   suggestedAction:
     | "CREATE_JOB"
     | "ASSIGN_JOB"
     | "CREATE_ASSIGNMENTS"
     | "CREATE_MIXED_TEAM"
+    | "CANCEL_JOB"
+    | "UPDATE_JOB"
+    | "ADD_TEAM_MEMBER"
     | "ANSWER"
     | "UNKNOWN";
   source?: "ai" | "local" | undefined;

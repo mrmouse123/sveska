@@ -677,3 +677,35 @@ Delimično, i to namerno:
    mojoj probi — ulaz sam pisao ASCII-jem pa je i izlaz bio bez dijakritike.
 3. Tier se ne može zatvoriti kako je nalaz tražio, jer demo svesno krši to
    pravilo. Nalaz je bio tačan, ali rešenje nije tehničko.
+
+# Faza 13 — tri komande koje su nedostajale (2026-10-15)
+
+Prijava sa terena: „prepoznaje samo zakazivanje posla". Tačno — ostalo nikad
+nije ni napisano. Dodato sve troje, probom pre implementacije (lekcija 20):
+`tasks/probe/commands.ts`, crveno 11/19 pre, 19/19 posle.
+
+## Dodato
+- **CANCEL_JOB** — „Otkaži posao kod Marka Petrovića."
+- **UPDATE_JOB** — „Pomeri posao kod Ane Marković na 15 časova.",
+  „Promeni cenu posla kod Milana Ilića na 200 evra."
+- **ADD_TEAM_MEMBER** — „Dodaj Jovana u tim vodoinstalateri."
+- **Multi-dodela radnicima**, i u TIM režimu, ne samo timovima u ZADRUGA:
+  „Pošalji Marka kod Ane, a Petra kod Milana" i
+  „Marko i Petar da poprave bojler i grejalicu."
+
+## Odluke koje su morale da se donesu
+- **Koji posao se otkazuje kad ih klijent ima više?** Bira se najbliži
+  predstojeći aktivan. Ne odbija se, jer bi komanda bila beskorisna u pravom
+  imeniku gde klijent po pravilu ima više poslova. Kartica traži potvrdu i
+  prikazuje KOJI posao, pa korisnik vidi pre nego što potvrdi.
+- **„na" se sada čita kao vreme** („pomeri na 15 časova"), ali ne kad je broj
+  uz valutu — „promeni cenu na 20 evra" ne postaje 20:00.
+- **Bez „kod" u rečenici nema klijenta**, pa se radnici traže bez filtera koji
+  inače sprečava da ime klijenta postane radnik. Da to ne proguta „Napravi tim
+  za Marka Petrovića", multi-dodela traži ili „kod" ili bar dva posla u rečenici.
+- `grejalicu` se nije prepoznavalo — DESCRIPTIONS je imao samo `grejanj|kotl`.
+
+## Takođe
+- `CREATE_ASSIGNMENTS` je uvek upisivao cenu 0; sada nosi cenu po dodeli.
+- Kartica potvrde prikazuje šta će se desiti i za nove komande, dugme za
+  otkazivanje je crveno, a „IZMENI" se ne nudi tamo gde nema šta da se menja.

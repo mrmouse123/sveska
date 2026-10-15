@@ -15,6 +15,8 @@ import {
   saveCustomer,
   saveJob,
   saveMixedTeam,
+  saveTeam,
+  saveWorker,
   syncStateToSupabase,
 } from "./supabaseService";
 import { useAuth } from "./authContext";
@@ -26,6 +28,8 @@ import type {
   JobStatus,
   MixedTeam,
   Mode,
+  Team,
+  Worker,
 } from "./types";
 
 const STORAGE_KEY = "sveska-state-v1"; // namespaced per user: `${STORAGE_KEY}:${uid}`
@@ -88,6 +92,7 @@ interface Ctx {
   setJobStatus: (id: string, status: JobStatus) => void;
   setJobPaid: (id: string, paid: boolean) => void;
   createMixedTeam: (name: string, members: { workerId: string; responsibility: string }[]) => MixedTeam;
+  addTeamMember: (teamId: string, workerId: string) => void;
   addNotification: (n: Omit<AppNotification, "id" | "read">) => void;
   markNotificationRead: (id: string) => void;
   resetDemo: () => void;
@@ -300,6 +305,36 @@ export function DemoProvider({ children }: { children: ReactNode }) {
     [mutate, persist],
   );
 
+  /** Radnik ulazi u tim: i tim dobija člana i radnik dobija tim. */
+  const addTeamMember = useCallback(
+    (teamId: string, workerId: string) => {
+      let team: Team | undefined;
+      let worker: Worker | undefined;
+      mutate((s) => ({
+        ...s,
+        teams: s.teams.map((t) => {
+          if (t.id !== teamId || t.memberIds.includes(workerId)) return t;
+          team = { ...t, memberIds: [...t.memberIds, workerId] };
+          return team;
+        }),
+        workers: s.workers.map((w) => {
+          if (w.id !== workerId) return w;
+          worker = { ...w, teamId };
+          return worker;
+        }),
+      }));
+      if (team) {
+        const t = team;
+        persist("tim", (u, o) => saveTeam(u, o, t));
+      }
+      if (worker) {
+        const w = worker;
+        persist("radnik", (u, o) => saveWorker(u, o, w));
+      }
+    },
+    [mutate, persist],
+  );
+
   // Podsećanja postoje samo na uređaju — nema ih u bazi, pa se ni ne upisuju.
   const addNotification = useCallback(
     (n: Omit<AppNotification, "id" | "read">) => {
@@ -338,6 +373,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       setJobStatus,
       setJobPaid,
       createMixedTeam,
+      addTeamMember,
       addNotification,
       markNotificationRead,
       resetDemo,
@@ -354,6 +390,7 @@ export function DemoProvider({ children }: { children: ReactNode }) {
       setJobStatus,
       setJobPaid,
       createMixedTeam,
+      addTeamMember,
       addNotification,
       markNotificationRead,
       resetDemo,

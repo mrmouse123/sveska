@@ -388,10 +388,47 @@ function ResultView({
         </div>
       ) : null}
 
+      {/* Komande nad POSTOJEĆIM poslom i timom. Bez ovog bloka korisnik vidi
+          samo dugme — a kod otkazivanja ne zna ni koji posao otkazuje. */}
+      {a === "CANCEL_JOB" || a === "UPDATE_JOB" ? (
+        <div className="mt-4 divide-y divide-border rounded-xl border border-border bg-card">
+          <DetailRow icon={Wrench} label="Posao" value={result.description ?? "—"} />
+          <DetailRow icon={User} label="Klijent" value={result.customer ?? "—"} />
+          {a === "CANCEL_JOB" ? (
+            <DetailRow
+              icon={Clock}
+              label="Zakazan"
+              value={`${result.date ? formatDateSr(result.date) : "—"}${result.time ? ` u ${result.time}` : ""}`}
+            />
+          ) : (
+            <>
+              {result.date ? (
+                <DetailRow icon={Clock} label="Novi datum" value={formatDateSr(result.date)} />
+              ) : null}
+              {result.time ? <DetailRow icon={Clock} label="Novo vreme" value={result.time} /> : null}
+              {result.price !== undefined ? (
+                <DetailRow icon={Euro} label="Nova cena" value={`€${result.price}`} />
+              ) : null}
+            </>
+          )}
+        </div>
+      ) : null}
+
+      {a === "ADD_TEAM_MEMBER" ? (
+        <div className="mt-4 divide-y divide-border rounded-xl border border-border bg-card">
+          <DetailRow icon={User} label="Radnik" value={result.worker ?? "—"} />
+          <DetailRow icon={Wrench} label="Tim" value={result.team ?? "—"} />
+        </div>
+      ) : null}
+
       <div className="mt-5 flex flex-wrap gap-2">
         {a !== "ANSWER" && a !== "UNKNOWN" ? (
           <>
-            <Button onClick={onConfirm} className="font-semibold">
+            <Button
+              onClick={onConfirm}
+              variant={a === "CANCEL_JOB" ? "destructive" : "default"}
+              className="font-semibold"
+            >
               <Check className="size-4" />
               {a === "CREATE_ASSIGNMENTS"
                 ? `POTVRDI ${result.assignments?.length ?? 0} ZADATKA`
@@ -399,11 +436,24 @@ function ResultView({
                   ? "KREIRAJ MIXED TEAM"
                   : a === "ASSIGN_JOB"
                     ? `DODELI ${(result.worker ?? result.team ?? "").toUpperCase()}`
-                    : "SAČUVAJ"}
+                    : a === "CANCEL_JOB"
+                      ? "OTKAŽI POSAO"
+                      : a === "UPDATE_JOB"
+                        ? "SAČUVAJ IZMENU"
+                        : a === "ADD_TEAM_MEMBER"
+                          ? "DODAJ U TIM"
+                          : "SAČUVAJ"}
             </Button>
-            <Button variant="outline" onClick={() => setEditing(!editing)} className="font-semibold">
-              <Pencil className="size-4" /> IZMENI
-            </Button>
+            {/* Kod komandi nad postojećim redom nema šta da se menja u kartici. */}
+            {a !== "CANCEL_JOB" && a !== "UPDATE_JOB" && a !== "ADD_TEAM_MEMBER" ? (
+              <Button
+                variant="outline"
+                onClick={() => setEditing(!editing)}
+                className="font-semibold"
+              >
+                <Pencil className="size-4" /> IZMENI
+              </Button>
+            ) : null}
           </>
         ) : null}
         <Button variant="ghost" onClick={onRetry} className="font-semibold">

@@ -333,6 +333,18 @@ export async function patchJobRemote(
   }
 }
 
+export async function saveTeam(uid: string, org: string, team: Team): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  await one("teams", () => sb.from("teams").upsert([teamRow(uid, org)(team)], PK));
+}
+
+export async function saveWorker(uid: string, org: string, worker: Worker): Promise<void> {
+  const sb = getSupabase();
+  if (!sb) return;
+  await one("workers", () => sb.from("workers").upsert([workerRow(uid, org)(worker)], PK));
+}
+
 export async function saveCustomer(uid: string, org: string, customer: Customer): Promise<void> {
   const sb = getSupabase();
   if (!sb) return;

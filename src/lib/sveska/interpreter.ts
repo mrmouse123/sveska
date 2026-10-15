@@ -57,14 +57,17 @@ export function parseTime(text: string): string | undefined {
 
   // `(?![\d:]|[.,]\d)` odbacuje "10:30" i "10.50", ali pusta "u 10," i "u 10."
   // — ranije je svaka interpunkcija iza sata gutala vreme.
-  const num = t.match(/\bu\s+(\d{1,2})(?![\d:]|[.,]\d)/);
+  // „na" je tu zbog pomeranja: „pomeri posao NA 15 časova". Broj uz valutu
+  // nije sat — „promeni cenu na 20 evra" ne sme da postane 20:00.
+  const num = t.match(/\b(?:u|na)\s+(\d{1,2})(?![\d:]|[.,]\d)(?!\s*(?:evr|eur|din))/);
   if (num) return hhmm(num[1]!, "00");
 
   // Token mora da BUDE sat, ne da pocinje njime: "dvadeset peti u deset"
   // daje 10:00, jer je samo "deset" posle "u".
   const toks = tokens(t);
   for (let i = 1; i < toks.length; i++) {
-    if (toks[i - 1] !== "u") continue;
+    if (toks[i - 1] !== "u" && toks[i - 1] !== "na") continue;
+    if (/^(evr|eur|din)/.test(toks[i + 1] ?? "")) continue;
     const hit = WORD_HOURS[toks[i]!];
     if (hit) return hit;
   }
@@ -114,8 +117,19 @@ const DESCRIPTIONS: [RegExp, string][] = [
   [/struj|elektr|osigurac|tabl/, "Električni radovi"],
   [/cev|voda|vodoinstalater|odgus/, "Vodoinstalaterski radovi"],
   [/klim/, "Montaža klime"],
-  [/grejanj|kotl/, "Servis grejanja"],
+  [/grejanj|grejal|radijator|kotl/, "Servis grejanja"],
 ];
+
+/** Svi prepoznati poslovi u rečenici, redom kojim se pominju. */
+function parseDescriptions(text: string): string[] {
+  const t = deburr(text);
+  const hits: { at: number; label: string }[] = [];
+  for (const [re, label] of DESCRIPTIONS) {
+    const m = t.match(re);
+    if (m?.index !== undefined) hits.push({ at: m.index, label });
+  }
+  return hits.sort((a, b) => a.at - b.at).map((h) => h.label);
+}
 
 function parseDescription(text: string, fallback = "Novi posao"): string {
   const t = deburr(text);
@@ -371,6 +385,33 @@ const isQuestion = (t: string) =>
   /^(ko|koji|koliko|kada|gde|sta|da li|ima li)\b/.test(deburr(t).trim()) || t.includes("?");
 
 /** Deterministic local interpreter used when the AI service is unavailable. */
+/** Statusi na kojima posao još „živi" — otkazan i završen se ne diraju. */
+const ACTIVE = new Set(["ZAKAZANO", "DODELJENO", "U TOKU", "ČEKA NAPLATU"]);
+
+/**
+ * Posao na koji se odnosi „otkaži posao kod Petrovića".
+ *
+ * Bira NAJBLIŽI PREDSTOJEĆI aktivan posao tog klijenta. Kad ih ima više,
+ * ne odbija nego bira i pokazuje koji — kartica traži potvrdu pre izvršenja,
+ * pa korisnik vidi šta će se desiti. Odbijanje bi komandu činilo beskorisnom
+ * u realnom imeniku, gde klijent po pravilu ima više poslova.
+ */
+function targetJob(state: DemoState, customerName: string | undefined, onDate?: string) {
+  if (!customerName) return undefined;
+  const c = state.customers.find((x) => x.name === customerName);
+  if (!c) return undefined;
+  const pool = state.jobs
+    .filter((j) => j.customerId === c.id && ACTIVE.has(j.status))
+    .filter((j) => (onDate ? j.date === onDate : true))
+    .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
+  const now = today();
+  return pool.find((j) => j.date >= now) ?? pool[pool.length - 1];
+}
+
+const CANCEL_VERB = /\b(otkazi|otkazati|otkazite|ponisti|stopiraj)\b/;
+const UPDATE_VERB = /\b(pomeri|pomerite|premesti|prebaci|promeni|promenite|izmeni)\b/;
+const ADD_MEMBER_VERB = /\b(dodaj|dodajte|ubaci|ubacite|prikljuci)\b/;
+
 export function interpretLocal(text: string, mode: Mode, state: DemoState): AiResult {
   const t = deburr(text);
   const date = parseDate(text);
@@ -392,6 +433,87 @@ export function interpretLocal(text: string, mode: Mode, state: DemoState): AiRe
     };
   }
 
+  // Bez „kod" u rečenici nema klijenta, pa filter koji sprečava da ime klijenta
+  // postane radnik tu samo smeta: „Dodaj Marka u tim" je gubilo Marka, jer je
+  // „marka" ujedno i ime klijenta Marko Petrović.
+  const hasKod = /\bkod\b/.test(t);
+  const workersLoose = hasKod ? workers : matchWorkers(text, state, []);
+  const allDescriptions = parseDescriptions(text);
+
+  const saidDate = /\b(danas|sutra|prekosutra|veceras)\b/.test(t);
+  const onDate = saidDate ? date : undefined;
+
+  // Dodavanje radnika u postojeći tim: „Dodaj Marka u tim vodoinstalateri."
+  if (ADD_MEMBER_VERB.test(t) && teams.length === 1 && workersLoose.length >= 1) {
+    return {
+      intent: "ADD_TEAM_MEMBER",
+      confidence: 0.9,
+      worker: workersLoose[0]!,
+      team: teams[0]!,
+      suggestedAction: "ADD_TEAM_MEMBER",
+      source: "local",
+    };
+  }
+
+  // Otkazivanje postojećeg posla: „Otkaži posao kod Marka Petrovića."
+  if (CANCEL_VERB.test(t)) {
+    const job = targetJob(state, customers[0], onDate);
+    if (!job) {
+      return {
+        intent: "CANCEL_JOB",
+        confidence: 0.4,
+        answer: customers[0]
+          ? `Nemam aktivan posao kod „${customers[0]}" koji bih otkazala.`
+          : "Reci kod koga je posao koji otkazujem.",
+        suggestedAction: "UNKNOWN",
+        source: "local",
+      };
+    }
+    return {
+      intent: "CANCEL_JOB",
+      confidence: 0.92,
+      jobId: job.id,
+      customer: customers[0]!,
+      description: job.description,
+      date: job.date,
+      time: job.time,
+      suggestedAction: "CANCEL_JOB",
+      source: "local",
+    };
+  }
+
+  // Izmena postojećeg posla: vreme, datum ili cena.
+  if (UPDATE_VERB.test(t)) {
+    const job = targetJob(state, customers[0], onDate);
+    const price = parsePrice(text);
+    const hasChange = Boolean(time) || price !== undefined || saidDate;
+    if (!job || !hasChange) {
+      return {
+        intent: "UPDATE_JOB",
+        confidence: 0.4,
+        answer: !job
+          ? customers[0]
+            ? `Nemam aktivan posao kod „${customers[0]}" koji bih izmenila.`
+            : "Reci kod koga je posao koji menjam."
+          : "Reci šta da promenim — vreme, datum ili cenu.",
+        suggestedAction: "UNKNOWN",
+        source: "local",
+      };
+    }
+    return {
+      intent: "UPDATE_JOB",
+      confidence: 0.92,
+      jobId: job.id,
+      customer: customers[0]!,
+      description: job.description,
+      ...(time ? { time } : {}),
+      ...(saidDate ? { date } : {}),
+      ...(price !== undefined ? { price } : {}),
+      suggestedAction: "UPDATE_JOB",
+      source: "local",
+    };
+  }
+
   // Mixed team creation
   if (/tim od|napravi tim|mixed|ekipu od|formiraj tim/.test(t) && workers.length >= 2) {
     const project =
@@ -409,23 +531,47 @@ export function interpretLocal(text: string, mode: Mode, state: DemoState): AiRe
     };
   }
 
-  // Multi assignment (zadruga)
-  if (mode === "zadruga" && (teams.length >= 2 || (teams.length >= 1 && customers.length >= 2))) {
-    // Rečenica se deli na delove po „, a" / „ a", pa svaki deo nosi SVOJ tim,
-    // klijenta i vreme. Ranije su timovi dodavani tvrdo kodiranim redom a parili
-    // se po indeksu, pa je „pošalji ELEKTRIČARE kod X, a VODOINSTALATERE kod Y"
-    // davalo obrnuto; drugo vreme se uopšte nije čitalo.
+  // Više dodela odjednom — timovima ili RADNICIMA.
+  //
+  // Bez „kod" u rečenici klijent ne postoji („Marko i Petar da poprave bojler i
+  // grejalicu"), pa se radnici traže BEZ filtera koji inače sprečava da ime
+  // klijenta postane radnik. Da to ne bi progutalo „Napravi tim za Marka
+  // Petrovića", grana traži ili „kod" ili bar dva prepoznata posla u rečenici.
+  const multiReady =
+    teams.length >= 2 ||
+    (teams.length >= 1 && customers.length >= 2) ||
+    (workersLoose.length >= 2 && (hasKod || allDescriptions.length >= 2));
+
+  if ((mode === "tim" || mode === "zadruga") && multiReady) {
+    // Rečenica se deli na delove po „, a" / „ a", pa svaki deo nosi SVOJ
+    // izvršioca, klijenta, vreme i cenu. Ranije su timovi dodavani tvrdo
+    // kodiranim redom a parili se po indeksu, pa je „pošalji ELEKTRIČARE kod X,
+    // a VODOINSTALATERE kod Y" davalo obrnuto, a drugo vreme se nije čitalo.
     const clauses = text.split(/,\s*a\s+|\s+a\s+/i);
-    const byClause = clauses.flatMap((clause) =>
-      matchTeams(clause, state).map((team) => ({
-        team,
-        customer: matchCustomers(clause, state)[0] ?? customers[0] ?? "Nepoznat klijent",
+    const byClause = clauses.flatMap((clause) => {
+      const cTeams = matchTeams(clause, state);
+      const cCustomers = matchCustomers(clause, state);
+      const kodHere = /\bkod\b/.test(deburr(clause));
+      const cWorkers = cTeams.length
+        ? []
+        : matchWorkers(clause, state, kodHere ? cCustomers : []);
+      const who: { team?: string; worker?: string }[] = cTeams.length
+        ? cTeams.map((team) => ({ team }))
+        : cWorkers.map((worker) => ({ worker }));
+      const descs = parseDescriptions(clause);
+      const clausePrice = parsePrice(clause);
+      return who.map((w, i) => ({
+        ...w,
+        customer: kodHere ? (cCustomers[0] ?? "Nepoznat klijent") : "Nepoznat klijent",
         time: parseTime(clause) ?? time ?? "08:00",
         date,
         description:
-          team === "ELEKTRIČARI" ? "Električni radovi" : "Vodoinstalaterski radovi",
-      })),
-    );
+          descs[i] ??
+          descs[0] ??
+          (w.team === "ELEKTRIČARI" ? "Električni radovi" : "Vodoinstalaterski radovi"),
+        ...(clausePrice !== undefined ? { price: clausePrice } : {}),
+      }));
+    });
     const assignments =
       byClause.length >= 2
         ? byClause
@@ -437,13 +583,15 @@ export function interpretLocal(text: string, mode: Mode, state: DemoState): AiRe
             description:
               team === "ELEKTRIČARI" ? "Električni radovi" : "Vodoinstalaterski radovi",
           }));
-    return {
-      intent: "MULTI_ASSIGNMENT",
-      confidence: 0.92,
-      assignments,
-      suggestedAction: "CREATE_ASSIGNMENTS",
-      source: "local",
-    };
+    if (assignments.length >= 2) {
+      return {
+        intent: "MULTI_ASSIGNMENT",
+        confidence: 0.92,
+        assignments,
+        suggestedAction: "CREATE_ASSIGNMENTS",
+        source: "local",
+      };
+    }
   }
 
   // Assign to a single worker or team
