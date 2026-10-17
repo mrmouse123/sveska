@@ -104,14 +104,14 @@ export function VoiceOverlay({ mode }: { mode: Mode }) {
         type="button"
         onClick={openPanel}
         aria-label="Reci SVESCI"
-        className="voice-ring fixed bottom-24 right-5 z-40 flex items-center gap-2 rounded-full bg-primary px-5 py-4 text-sm font-bold text-primary-foreground shadow-voice transition-transform hover:scale-105 md:bottom-8 md:right-8 md:px-6"
+        className="voice-ring fixed bottom-[calc(6rem+env(safe-area-inset-bottom))] right-5 z-40 flex items-center gap-2 rounded-full bg-primary px-5 py-4 text-sm font-bold text-primary-foreground shadow-voice transition-transform hover:scale-105 md:bottom-8 md:right-8 md:px-6"
       >
         <Mic className="size-5" />
         <span className="hidden sm:inline">RECI SVESCI</span>
       </button>
 
       <Dialog open={open} onOpenChange={(v) => (v ? setOpen(true) : closePanel())}>
-        <DialogContent className="max-h-[92vh] max-w-lg overflow-y-auto">
+        <DialogContent className="max-h-[92dvh] max-w-lg overflow-y-auto">
           <DialogTitle className="sr-only">SVESKA glasovni unos</DialogTitle>
 
           {phase === "listening" ? (
@@ -277,6 +277,11 @@ function ResultView({
   onRetry: () => void;
 }) {
   const a = result.suggestedAction;
+  // Lokalni tekst polja za cenu, sinhronizovan kad rezultat stigne spolja.
+  const [priceText, setPriceText] = useState(result.price === undefined ? "" : String(result.price));
+  useEffect(() => {
+    setPriceText(result.price === undefined ? "" : String(result.price));
+  }, [result.price]);
   return (
     <div className="py-2">
       {a !== "ANSWER" && a !== "UNKNOWN" && a !== "CREATE_ASSIGNMENTS" ? (
@@ -314,8 +319,18 @@ function ResultView({
                   placeholder="Vreme"
                 />
                 <Input
-                  value={String(result.price ?? "")}
-                  onChange={(e) => onChange({ ...result, price: Number(e.target.value) || 0 })}
+                  inputMode="decimal"
+                  value={priceText}
+                  onChange={(e) => {
+                    // Tekst ostaje kakav je ukucan; broj se izvlači sa strane. Kontrolisan
+                    // krug kroz Number() je na „120." vraćao 120 i jeo tačku — 120,50 se
+                    // nije moglo uneti.
+                    const raw = e.target.value;
+                    setPriceText(raw);
+                    const n = Number(raw.replace(",", "."));
+                    if (raw.trim() === "") onChange({ ...result, price: undefined });
+                    else if (Number.isFinite(n)) onChange({ ...result, price: n });
+                  }}
                   placeholder="Cena"
                 />
               </div>

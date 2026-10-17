@@ -330,7 +330,7 @@ export function NewJobDialog({ mode, trigger }: { mode: Mode; trigger?: React.Re
       <DialogTrigger asChild>
         {trigger ?? <Button className="font-semibold">+ NOVI POSAO</Button>}
       </DialogTrigger>
-      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
+      <DialogContent className="max-h-[90dvh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="font-display">
             {mode === "solo" ? "Novi posao" : "Dodeli posao"}

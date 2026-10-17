@@ -245,7 +245,7 @@ export function ModeApp({ mode }: { mode: Mode }) {
         </main>
       </div>
 
-      <nav className="fixed bottom-0 left-0 right-0 z-30 flex overflow-x-auto border-t border-border bg-card/95 backdrop-blur md:hidden">
+      <nav className="fixed bottom-0 left-0 right-0 z-30 flex overflow-x-auto border-t border-border bg-card/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
         {nav.map((n) => (
           <button
             key={n.id}

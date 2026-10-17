@@ -74,7 +74,9 @@ export function ChatScreen({ mode }: { mode: Mode }) {
         {busy ? <p className="text-sm text-muted-foreground">SVESKA razmišlja…</p> : null}
       </div>
       <form
-        className="sticky bottom-20 flex gap-2 md:bottom-4"
+        // Desni razmak na telefonu: mikrofon (FAB) stoji baš tu gde bi bilo
+        // dugme „Pošalji", pa je klik otvarao glas umesto da pošalje.
+        className="sticky bottom-20 flex gap-2 pr-24 md:bottom-4 md:pr-0"
         onSubmit={(e) => {
           e.preventDefault();
           void send(input);

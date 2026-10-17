@@ -709,3 +709,21 @@ nije ni napisano. Dodato sve troje, probom pre implementacije (lekcija 20):
 - `CREATE_ASSIGNMENTS` je uvek upisivao cenu 0; sada nosi cenu po dodeli.
 - Kartica potvrde prikazuje šta će se desiti i za nove komande, dugme za
   otkazivanje je crveno, a „IZMENI" se ne nudi tamo gde nema šta da se menja.
+
+# Faza 14 — četiri preostala nalaza sa telefona (2026-10-17)
+
+- [x] RequireAuth: `creating` u zavisnostima + progutana greška = beskonačna
+      petlja `ensure_org()` na lošem signalu. Sada jedan pokušaj po nalogu
+      (stanje idle/running/done/failed) i vidljiva kartica „Pokušaj ponovo".
+- [x] FAB preko dugmeta „Pošalji" u SVESKA AI tabu: forma dobila `pr-24` na
+      telefonu. FAB je na telefonu samo ikona (~56px + 20px desno = 76px < 96px).
+- [x] Editor cene u kartici: kontrolisan krug kroz `Number()` jeo tačku, pa se
+      120,50 nije moglo uneti. Tekst polja je sada lokalni, broj se izvlači sa
+      strane; `inputMode="decimal"`.
+- [x] safe-area/dvh: `viewport-fit=cover` (bez toga je `env(safe-area-inset-*)`
+      uvek 0), `pb-[env(safe-area-inset-bottom)]` na donjoj navigaciji, FAB
+      podignut za istu vrednost, dijalozi `vh` -> `dvh`.
+
+Provereno: typecheck, lint 0 grešaka, build, sve probe zeleno.
+NIJE vizuelno provereno na pravom telefonu — #2 i #4 su izmerene iz klasa, ne
+sa ekrana. Tester je prava provera.
