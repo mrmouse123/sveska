@@ -727,3 +727,33 @@ nije ni napisano. Dodato sve troje, probom pre implementacije (lekcija 20):
 Provereno: typecheck, lint 0 grešaka, build, sve probe zeleno.
 NIJE vizuelno provereno na pravom telefonu — #2 i #4 su izmerene iz klasa, ne
 sa ekrana. Tester je prava provera.
+
+# Faza 15 — glas preko servera za iPhone i Firefox (2026-10-17)
+
+Zašto: aplikacija koristi pregledačev SpeechRecognition. Chrome: radi, besplatno.
+iOS Safari: Apple-ov srpski je slab. Firefox: motora nema. Claude NE može da bude
+motor za govor (API ne prima zvuk), pa treba zaseban provajder i zaseban ključ.
+
+Odluke:
+- Server SAMO na iOS-u i gde motora nema; Chrome ostaje na pregledaču.
+- Na serverskom putu NEMA pravila tišine — snimanje prekida dodir ZAVRŠI, uz tvrdu
+  granicu 60 s. Na gradilištu tišina nije signal, a AudioContext na iOS-u traži dodir.
+- Provajder je OpenAI-kompatibilan (Groq podrazumevano), menja se tajnama
+  STT_BASE_URL / STT_MODEL — bez izmene koda.
+
+Urađeno:
+- [x] `supabase/functions/transcribe` — deploy v1 ACTIVE; isti auth gate kao ai-process,
+      kapa 8 MB, timeout 25 s, mapiranje grešaka provajdera na razloge.
+- [x] `src/lib/sveska/recorderService.ts` — MediaRecorder sesija istog oblika kao
+      pregledačeva (`VoiceSession`), mikrofon se pušta na svakom izlazu.
+- [x] hook bira implementaciju; overlay menja tekstove u serverskom režimu.
+- [x] `tasks/probe/recorder.ts` — 27 tvrdnji na lažnom MediaRecorder-u: adresa, zaglavlja,
+      zvuk u telu, puštanje mikrofona, kodovi grešaka (bez ključa, 500, prazan tekst,
+      bez sesije, odbijen mikrofon), otkaz ne šalje ništa, tvrda granica sama završava,
+      izbor puta po uređaju (iPhone, iPadOS-kao-Mac, desktop).
+- [x] Živa funkcija: anon → 401 unauthorized, bez zaglavlja → 401, OPTIONS → 204.
+
+NIJE dokazano i ne tvrdi se:
+- kvalitet prepoznavanja srpskog na iPhone-u — nema iPhone-a, nema srpskog snimka,
+  nema ključa. To je test na uređaju posle `STT_API_KEY`.
+- [ ] Jovan: STT_API_KEY (Groq) u Edge Function Secrets, pa test na iPhone-u.

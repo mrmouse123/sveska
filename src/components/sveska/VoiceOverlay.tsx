@@ -123,7 +123,7 @@ export function VoiceOverlay({ mode }: { mode: Mode }) {
                   : "SVESKA SLUŠA..."}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Pričaj prirodno, ne prekidam te.
+                {speech.serverMode ? "Pričaj, pa pritisni ZAVRŠI." : "Pričaj prirodno, ne prekidam te."}
               </p>
               <div className="my-6 flex h-14 items-center justify-center gap-1.5">
                 {Array.from({ length: 20 }).map((_, i) => (
@@ -135,17 +135,26 @@ export function VoiceOverlay({ mode }: { mode: Mode }) {
                 ))}
               </div>
               <p className="min-h-16 rounded-xl bg-secondary p-4 text-left text-sm">
-                {live || "Pričaj slobodno na srpskom…"}
+                {live ||
+                  (speech.serverMode
+                    ? "Snimam… tekst stiže kad pritisneš ZAVRŠI."
+                    : "Pričaj slobodno na srpskom…")}
               </p>
               <div className="mt-4 rounded-xl bg-accent-soft px-4 py-3">
                 <p className="text-xs text-muted-foreground">
                   Slušam… Nastavi slobodno da pričaš.
                 </p>
                 <p className="mt-1 font-display text-lg font-bold">
-                  {speech.countdown === null ? "Čekam na kraj govora" : `${speech.countdown}s`}
+                  {speech.serverMode
+                    ? "Snimam"
+                    : speech.countdown === null
+                      ? "Čekam na kraj govora"
+                      : `${speech.countdown}s`}
                 </p>
                 <p className="text-[11px] text-muted-foreground">
-                  Automatski završavam nakon 10 sekundi tišine.
+                  {speech.serverMode
+                    ? "Snimanje traje najviše 60 s; prepoznavanje ide preko servera."
+                    : "Automatski završavam nakon 10 sekundi tišine."}
                 </p>
               </div>
               {speech.error ? (

@@ -57,6 +57,28 @@ Prijava koristi samo email+lozinku (`signInWithPassword`), bez preusmeravanja �
 ovo **nije blokada za prijavu**. Jeste bitno za link iz mejla potvrde pri registraciji:
 bez Site URL-a taj link vodi u prazno.
 
+## A5b. Glas preko servera (iPhone, Firefox) — opciono
+
+Na Chrome-u glas radi kroz pregledač, besplatno, bez ičega. Na **iOS Safariju**
+Apple-ov motor slabo zna srpski, a Firefox motora nema — tamo aplikacija snima
+zvuk i šalje ga edge funkciji `transcribe`, koja ga prosleđuje Whisper-kompatibilnom
+provajderu. Bez ključa korisnik na tim uređajima vidi poruku da server nije podešen
+i može da kuca; ništa se ne lomi.
+
+Preporučeno: **Groq** (Whisper large-v3, najbolji odnos srpskog i cene, ima besplatan
+nivo). Nalog na console.groq.com → API Keys → napravi ključ, pa:
+
+Supabase → Edge Functions → Secrets:
+
+| Ime | Vrednost |
+|---|---|
+| `STT_API_KEY` | ključ provajdera (obavezno) |
+| `STT_BASE_URL` | prazno za Groq; za OpenAI `https://api.openai.com/v1` |
+| `STT_MODEL` | prazno za Groq (`whisper-large-v3`); za OpenAI `whisper-1` |
+
+Provera: na iPhone-u otvori aplikaciju → mikrofon → reci rečenicu → **ZAVRŠI**.
+Snimanje traje najviše 60 s i prekida se dodirom, ne tišinom.
+
 ## A6. Provera
 
 1. Otvori `https://mrmouse123.github.io/sveska/` → početna.

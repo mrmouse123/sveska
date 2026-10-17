@@ -1,15 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   createVoiceSession,
-  isVoiceSupported,
+  hasBrowserRecognition,
   isSecureContextOk,
   type VoiceErrorCode,
+  type VoiceSession,
   type VoiceStatus,
 } from "@/lib/sveska/voiceService";
+import { canRecord, createRecorderSession, shouldUseServerStt } from "@/lib/sveska/recorderService";
 
 export function useSpeechRecognition(onFinal: (text: string) => void) {
   const [supported, setSupported] = useState(false);
   const [secure, setSecure] = useState(true);
+  /** iOS i pregledači bez motora snimaju i šalju na server; Chrome ostaje lokalan. */
+  const [serverMode, setServerMode] = useState(false);
   const [status, setStatus] = useState<VoiceStatus>("idle");
   const [transcript, setTranscript] = useState("");
   const [interim, setInterim] = useState("");
@@ -19,16 +23,19 @@ export function useSpeechRecognition(onFinal: (text: string) => void) {
 
   const cbRef = useRef(onFinal);
   cbRef.current = onFinal;
-  const sessionRef = useRef<ReturnType<typeof createVoiceSession> | null>(null);
+  const sessionRef = useRef<VoiceSession | null>(null);
 
   useEffect(() => {
-    setSupported(isVoiceSupported());
+    // Mikrofon se nudi ako postoji IJEDAN put: pregledačev motor ili snimanje.
+    setSupported(hasBrowserRecognition() || canRecord());
+    setServerMode(shouldUseServerStt());
     setSecure(isSecureContextOk());
   }, []);
 
   const ensureSession = useCallback(() => {
     if (sessionRef.current) return sessionRef.current;
-    sessionRef.current = createVoiceSession({
+    const make = shouldUseServerStt() ? createRecorderSession : createVoiceSession;
+    sessionRef.current = make({
       onStatus: setStatus,
       onTranscript: (t, i) => {
         setTranscript(t);
@@ -71,6 +78,7 @@ export function useSpeechRecognition(onFinal: (text: string) => void) {
   return {
     supported,
     secure,
+    serverMode,
     status,
     listening: status === "listening" || status === "requesting_permission",
     transcript,

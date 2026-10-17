@@ -22,6 +22,8 @@ export type VoiceErrorCode =
   | "audio-capture"
   | "no-speech"
   | "network"
+  | "stt-unavailable"
+  | "signin-required"
   | "unknown";
 
 export const VOICE_MESSAGES: Record<VoiceErrorCode, string> = {
@@ -33,6 +35,9 @@ export const VOICE_MESSAGES: Record<VoiceErrorCode, string> = {
   "no-speech": "Nisam čula šta si rekao. Pokušaj ponovo.",
   network: "Glasovna usluga trenutno nije dostupna. Proveri internet i pokušaj ponovo.",
   unknown: "Glasovni unos trenutno nije dostupan. Možeš i da otkucaš komandu.",
+  "stt-unavailable":
+    "Prepoznavanje govora preko servera još nije podešeno. Možeš i da otkucaš komandu.",
+  "signin-required": "Prijavi se da bi glasovni unos radio na ovom uređaju.",
 };
 
 type SR = {
@@ -57,8 +62,11 @@ function getCtor(): (new () => SR) | null {
     | null;
 }
 
+/** Da li pregledač ima SOPSTVENI motor za prepoznavanje (Chrome: da, Firefox: ne). */
+export const hasBrowserRecognition = (): boolean => Boolean(getCtor());
+
 export function isVoiceSupported(): boolean {
-  return Boolean(getCtor());
+  return hasBrowserRecognition();
 }
 
 export function isSecureContextOk(): boolean {
@@ -258,3 +266,6 @@ export function createVoiceSession(cb: VoiceCallbacks) {
     getVoiceStatus: () => ({ active, hasSpoken, finalText }),
   };
 }
+
+/** Oblik sesije koji dele pregledačev i serverski put — hook i UI vide samo ovo. */
+export type VoiceSession = ReturnType<typeof createVoiceSession>;
