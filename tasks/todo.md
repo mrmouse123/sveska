@@ -780,7 +780,10 @@ NIJE dokazano i ne tvrdi se:
 - [~] 2026-10-21 kasnije: Jovan ipak napravio Groq ključ → iPhone VRAĆEN na server
   (`isIos() ||`), proba 30/30. Dva ključa, dva posla: `ANTHROPIC_API_KEY` (razumevanje),
   `STT_API_KEY` (glas → tekst). Claude ključ se NE menja Groq ključem.
-- [ ] Jovan: `STT_API_KEY` u Edge Function Secrets; zatim test srpskog na iPhone-u.
+- [x] Jovan uneo Groq ključ kao `GROQ_API_KEY` (ne `STT_API_KEY`) → funkcija `transcribe`
+  sada čita oba imena (v4, deploy 2026-10-21 21:07 UTC). Probni WAV ton iz Chrome sesije
+  → `{ok:true, text:"."}` za 2,7 s: gateway, prijava i Groq ključ rade.
+- [ ] Jovan: srpska rečenica na iPhone-u u Safariju — jedino što ovo ne dokazuje je kvalitet.
 
 # Faza 16 — dupliranje na Androidu, DRUGI mehanizam (2026-10-21)
 

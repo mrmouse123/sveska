@@ -68,7 +68,7 @@ ključa, svaki za svoj posao:
 | Secret | Čemu služi | Odakle |
 |---|---|---|
 | `ANTHROPIC_API_KEY` | razumevanje komande (`ai-process`) | platform.claude.com → API keys |
-| `STT_API_KEY` | glas → tekst (`transcribe`) | console.groq.com → API Keys |
+| `STT_API_KEY` (ili `GROQ_API_KEY`) | glas → tekst (`transcribe`) | console.groq.com → API Keys |
 
 `STT_BASE_URL` i `STT_MODEL` nisu potrebni: podrazumevano su Groq i
 `whisper-large-v3`. Bez `STT_API_KEY` korisnik na iPhone-u vidi „server nije

@@ -6,7 +6,7 @@
 // zvuk i pošalje ga ovde, a mi ga prosledimo provajderu.
 //
 // Tajne (supabase secrets set …):
-//   STT_API_KEY   obavezno — ključ provajdera
+//   STT_API_KEY   obavezno — ključ provajdera (prihvata se i ime GROQ_API_KEY)
 //   STT_BASE_URL  podrazumevano https://api.groq.com/openai/v1  (OpenAI-kompatibilno:
 //                 za OpenAI stavi https://api.openai.com/v1)
 //   STT_MODEL     podrazumevano whisper-large-v3  (za OpenAI: whisper-1)
@@ -56,7 +56,8 @@ Deno.serve(async (req: Request) => {
     const { data: userData, error: userErr } = await sb.auth.getUser();
     if (userErr || !userData.user) return json({ ok: false, reason: "unauthorized" }, 401);
 
-    const key = Deno.env.get("STT_API_KEY");
+    // Tajna je u dashboardu uneta kao GROQ_API_KEY; oba imena rade, STT_API_KEY ima prednost.
+    const key = Deno.env.get("STT_API_KEY") ?? Deno.env.get("GROQ_API_KEY");
     if (!key) return json({ ok: false, reason: "no_api_key" });
     const base = (Deno.env.get("STT_BASE_URL") ?? "https://api.groq.com/openai/v1").replace(/\/$/, "");
     const model = Deno.env.get("STT_MODEL") ?? "whisper-large-v3";
