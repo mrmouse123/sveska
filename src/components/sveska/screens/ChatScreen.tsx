@@ -35,8 +35,17 @@ export function ChatScreen({ mode }: { mode: Mode }) {
     const res = await processVoiceCommand(text, mode, demo.state);
     let reply = res.answer ?? "";
     if (res.suggestedAction !== "ANSWER" && res.suggestedAction !== "UNKNOWN") {
-      reply = executeAiResult(res, mode, demo.state, demo);
-      toast.success(reply);
+      // Čet izvršava bez kartice. Otkazivanje i izmena diraju POSTOJEĆI posao
+      // (kreiranje pravi nov, pa je bezopasno), i od 2026-10-22 ih i AI put ume
+      // da nađe — zato isti `confirm` kao i u dijalogu statusa (Common.tsx).
+      const destructive = res.suggestedAction === "CANCEL_JOB" || res.suggestedAction === "UPDATE_JOB";
+      const what = res.suggestedAction === "CANCEL_JOB" ? "otkažem" : "izmenim";
+      if (destructive && !window.confirm(`Da ${what} posao kod „${res.customer ?? "klijenta"}"?`)) {
+        reply = "U redu, ništa nisam menjala.";
+      } else {
+        reply = executeAiResult(res, mode, demo.state, demo);
+        toast.success(reply);
+      }
     }
     setMessages((m) => [...m, { role: "ai", text: reply || "Razumela sam." }]);
     setBusy(false);

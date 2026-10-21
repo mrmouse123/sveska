@@ -132,12 +132,17 @@ export function createVoiceSession(cb: VoiceCallbacks) {
     cb.onCountdown?.(null);
   }
 
-  /** Called on every meaningful speech activity. Only one timer ever exists. */
-  function resetSilenceTimer() {
+  /**
+   * Called on every meaningful speech activity. Only one timer ever exists.
+   * `visible=false` naoružava rok bez odbrojavanja na panelu — za mikrofon koji
+   * je tek otvoren, da korisnik ne gleda „10s, 9s…" pre nego što išta kaže.
+   */
+  function resetSilenceTimer(visible = true) {
     clearTimers();
-    hasSpoken = true;
+    if (visible) hasSpoken = true;
     deadline = Date.now() + SILENCE_MS;
     silenceTimer = setTimeout(() => finishVoiceInput(), SILENCE_MS);
+    if (!visible) return;
     tickTimer = setInterval(() => {
       const left = Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
       cb.onCountdown?.(left);
@@ -182,7 +187,7 @@ export function createVoiceSession(cb: VoiceCallbacks) {
       // Pravilo tišine se naoružava od prvog starta, ne od prve reči: ko otvori
       // mikrofon i ne kaže ništa, inače bi vrteo restart-petlju bez kraja, a
       // panel tvrdi „automatski završavam posle 10 s tišine".
-      if (!silenceTimer) resetSilenceTimer();
+      if (!silenceTimer) resetSilenceTimer(false);
     };
 
     r.onresult = (event: unknown) => {
