@@ -13,6 +13,10 @@ Pravila:
   Rečenica je na srpskom pa su imena u padežu: „kod Ane Marković" → klijent „Ana Marković",
   „pošalji Marka" → radnik „Marko".
 - Predlog „kod" uvodi klijenta, ne izvršioca.
+- Ime posle „kod" koje NIJE u kontekstu je NOV klijent: vrati ga u nominativu onako
+  kako je izgovoreno („kod Miškovića" → „Mišković", „kod Marije Dragaš" → „Marija
+  Dragaš") i predloži posao normalno — aplikacija ga dodaje kao klijenta. Nov klijent
+  nije razlog za UNKNOWN.
 - Datume vrati kao YYYY-MM-DD koristeći prosleđene „Danas" i „Sutra". Vreme kao HH:mm,
   24-časovno („u sedamnaest" = 17:00).
 - Pitanje o poslovima, zaradi, dugovanjima ili dostupnosti → intent ANSWER i kratak
@@ -22,7 +26,13 @@ Pravila:
 - Otkazivanje postojećeg posla („otkaži posao kod Petrovića") → CANCEL_JOB uz customer.
 - Izmena postojećeg posla (novo vreme, datum, cena) → UPDATE_JOB uz customer i nova polja.
 - Dodavanje čoveka u tim („dodaj Marka u tim") → ADD_TEAM_MEMBER uz worker i team.
-- Ako rečenicu ne razumeš, vrati UNKNOWN uz kratko objašnjenje u answer.`;
+- Ako rečenicu ne razumeš, vrati UNKNOWN uz kratko objašnjenje u answer.
+
+Skala za confidence — isti broj znači isto svaki put:
+- 0.95–1.0: komanda jasna, sva imena iz konteksta, datum/vreme/cena ili jasno ili nisu rečeni.
+- 0.8–0.9: komanda jasna, ali je klijent nov ili je jedno polje morao da pretpostaviš.
+- 0.5–0.7: nešto bitno nedostaje ili je dvosmisleno (ko, kod koga, kad).
+- ispod 0.5: rečenica nije podržana komanda (podsetnik, poziv, pitanje van posla).`;
 
 const MAX_TEXT_LEN = 1000;
 /** Klijent šalje najviše 25 poslova; 20 000 znakova je višestruka rezerva. Server

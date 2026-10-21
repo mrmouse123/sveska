@@ -915,3 +915,23 @@ POZNATE RUPE (odluke, ne bagovi) — zabeležene, ne dirane:
 - [ ] Jovan: iPhone test — ZAVRŠI dok je upit za mikrofon otvoren mora da vrati
   „Nisam čula…", ne zaglavljen panel.
 
+# Faza 20 — sigurnost koja znači isto svaki put (2026-10-22)
+
+Jovan sa iPhone-a: Groq prepoznao „Sutra u 12.15. idi kod Miškovića i pločice postavi
+u WC-u. 150 eura je cena." bez greške (iOS put radi od kraja do kraja), Claude pogodio
+sve, a kartica pisala „pouzdanost 60%" — samo zato što je Mišković nov klijent.
+„Nazovi Mariju Dragaš" (podsetnik) → 50%.
+
+Urađeno (ai-process v12 + VoiceOverlay):
+- Uputstvo: ime posle „kod" koje nije u kontekstu je NOV klijent, ne razlog za UNKNOWN.
+- Skala za confidence u uputstvu: 0.95+ sve poznato; 0.8–0.9 nov klijent ili jedna
+  pretpostavka; 0.5–0.7 nešto bitno fali; <0.5 nepodržana komanda.
+- Kartica: reči umesto procenta („sigurna sam" / „prilično sigurna, pogledaj polja" /
+  „nisam sigurna, proveri pre čuvanja"), pragovi 0.9 / 0.75.
+
+Uživo (v12): poznat klijent 0.97 · Mišković (nov) 0.85 · „zakaži posao sutra" 0.5 ·
+„nazovi Mariju" 0.3 (UNKNOWN, objasni da podsetnike ne podržava). Tačno po skali.
+
+- [ ] Podsetnici (CREATE_REMINDER) — najveći dobitak, čeka odluku: pretvara ceo razred
+  rečenica („nazovi X sutra", „naruči cevi u petak") iz UNKNOWN u siguran zapis.
+

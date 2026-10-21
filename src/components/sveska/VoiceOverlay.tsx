@@ -33,6 +33,17 @@ const EXAMPLES: Record<Mode, string[]> = {
 
 type Phase = "idle" | "listening" | "thinking" | "result";
 
+/**
+ * Majstoru „pouzdanost 60%" ne znači ništa; „nisam sigurna, proveri" znači.
+ * Pragovi prate skalu koju model dobija u uputstvu (ai-process): 0.95+ sigurno,
+ * 0.8 nov klijent ili jedna pretpostavka, ispod toga nešto bitno nedostaje.
+ */
+function confidenceLabel(c: number): string {
+  if (c >= 0.9) return "sigurna sam";
+  if (c >= 0.75) return "prilično sigurna, pogledaj polja";
+  return "nisam sigurna, proveri pre čuvanja";
+}
+
 export function VoiceOverlay({ mode }: { mode: Mode }) {
   const demo = useDemo();
   const [open, setOpen] = useState(false);
@@ -496,8 +507,8 @@ function ResultView({
       </div>
       <p className="mt-3 text-[11px] text-muted-foreground">
         {result.source === "ai" ? "Obrađeno realnim AI modelom" : "SVESKA trenutno koristi demo režim"}
-        {" · pouzdanost "}
-        {Math.round((result.confidence ?? 0.9) * 100)}%
+        {" · "}
+        {confidenceLabel(result.confidence ?? 0.9)}
       </p>
     </div>
   );
