@@ -11,6 +11,7 @@
     "start": "node .output/server/index.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
+    "probe": "node scripts/probe.mjs",
     "format": "prettier --write ."
   },
   "dependencies": {

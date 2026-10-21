@@ -2,6 +2,13 @@
  * Sync serialisation probe — runs the REAL supabaseService against a stubbed fetch.
  * Checks: (1) concurrent syncs never interleave and the newest state wins,
  *         (2) a failed write does not swallow a newer state that is already queued.
+ *
+ *   npx esbuild tasks/probe/sync.ts --bundle --format=esm --platform=node \
+ *     --outfile=.probe/sync.mjs --define:import.meta.env=globalThis.__ENV \
+ *     --banner:js='globalThis.__ENV={VITE_SUPABASE_URL:"https://stub.supabase.co",VITE_SUPABASE_ANON_KEY:"eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.c2lnbmF0dXJlc2lnbmF0dXJlc2lnbmF0dXJl"};' \
+ *   (getSupabaseConfig proverava oblik adrese i ključa — stub mora da liči na prave)
+ *     && node .probe/sync.mjs
+ *   Bez konfiguracije sync je no-op i sve četiri provere lažno padaju (max=0).
  */
 import { syncStateToSupabase } from "../../src/lib/sveska/supabaseService";
 import { createInitialState } from "../../src/lib/sveska/data";

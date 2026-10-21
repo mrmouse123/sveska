@@ -6,7 +6,8 @@
  *   npx esbuild tasks/probe/patch.ts --bundle --format=esm --platform=node \
  *     --outfile=.probe/patch.mjs \
  *     --define:import.meta.env=globalThis.__ENV \
- *     --banner:js='globalThis.__ENV={VITE_SUPABASE_URL:"http://stub.local",VITE_SUPABASE_ANON_KEY:"anon"};' \
+ *     --banner:js='globalThis.__ENV={VITE_SUPABASE_URL:"https://stub.supabase.co",VITE_SUPABASE_ANON_KEY:"eyJhbGciOiJIUzI1NiJ9.eyJyb2xlIjoiYW5vbiJ9.c2lnbmF0dXJlc2lnbmF0dXJlc2lnbmF0dXJl"};' \
+ *   (getSupabaseConfig proverava oblik adrese i ključa — stub mora da liči na prave)
  *     && node .probe/patch.mjs
  */
 import { patchJobRemote } from "../../src/lib/sveska/supabaseService";
