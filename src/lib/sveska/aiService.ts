@@ -38,13 +38,15 @@ let lastWarm = 0;
 export function warmAi(): void {
   const now = Date.now();
   if (now - lastWarm < WARM_EVERY_MS) return;
-  lastWarm = now;
   void (async () => {
     try {
       const cfg = getSupabaseConfig();
       if (!cfg) return;
       const session = await getSession();
       if (!session) return;
+      // Brojač se pomera tek kad ping stvarno krene: ako se pri otvaranju app-a
+      // sesija još nije slegla, pritisak mikrofona 10 s kasnije mora da prođe.
+      lastWarm = Date.now();
       await fetch(`${cfg.url}/functions/v1/ai-process`, {
         method: "POST",
         headers: {
