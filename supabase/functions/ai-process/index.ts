@@ -19,6 +19,9 @@ Pravila:
   odgovor na srpskom u polju answer, izveden iz konteksta.
 - Više zadataka odjednom → CREATE_ASSIGNMENTS.
 - Formiranje tima od ljudi različitih struka → CREATE_MIXED_TEAM.
+- Otkazivanje postojećeg posla („otkaži posao kod Petrovića") → CANCEL_JOB uz customer.
+- Izmena postojećeg posla (novo vreme, datum, cena) → UPDATE_JOB uz customer i nova polja.
+- Dodavanje čoveka u tim („dodaj Marka u tim") → ADD_TEAM_MEMBER uz worker i team.
 - Ako rečenicu ne razumeš, vrati UNKNOWN uz kratko objašnjenje u answer.`;
 
 const MAX_TEXT_LEN = 1000;
@@ -53,6 +56,9 @@ const TOOL = {
           "ASSIGN_JOB",
           "CREATE_ASSIGNMENTS",
           "CREATE_MIXED_TEAM",
+          "CANCEL_JOB",
+          "UPDATE_JOB",
+          "ADD_TEAM_MEMBER",
           "ANSWER",
           "UNKNOWN",
         ],
@@ -93,10 +99,51 @@ const TOOL = {
         },
       },
     },
-    required: ["intent", "confidence", "suggestedAction"],
+    // Sva polja su obavezna (uz dozvoljen null): dok su bila opciona, model je u
+    // dodeli vraćao samo radnika, a klijenta, datum i cenu preskakao. Obavezno
+    // polje ga tera da svako razmotri i upiše ili vrednost ili null.
+    required: [
+      "intent",
+      "confidence",
+      "suggestedAction",
+      "customer",
+      "worker",
+      "team",
+      "description",
+      "date",
+      "time",
+      "price",
+      "currency",
+      "project",
+      "answer",
+      "members",
+      "assignments",
+    ],
     additionalProperties: false,
   },
 };
+
+/** Jedan poziv modela — isti prefiks (alat + uputstvo) i za komandu i za zagrevanje. */
+function callClaude(key: string, userText: string, maxTokens: number) {
+  const anthropic = new Anthropic({ apiKey: key });
+  return anthropic.messages.create({
+    // Haiku 5.5: izvlačenje „ko, kod koga, kad, koliko" iz jedne rečenice ne
+    // traži najveći model; Opus 5 je davao 4–10 s, Haiku 2–3 s, uz ~20x nižu
+    // cenu. Prisilni poziv alata je na Haiku 5.5 dozvoljen (Opus 5.5 i
+    // Sonnet 5.5 ga odbijaju) i preskače razmišljanje — baš ono što glas traži.
+    model: "claude-haiku-5-5",
+    max_tokens: maxTokens,
+    // Kratka ekstrakcija — niska potrošnja i brži odgovor, što je bitno za glas.
+    output_config: { effort: "low" },
+    // Keš prefiksa: redosled je tools -> system -> messages, pa oznaka na
+    // sistemskom bloku kešira i alat i uputstvo zajedno. Datumi su u poruci
+    // korisnika, ne ovde, da prefiks ostane isti iz poziva u poziv.
+    system: [{ type: "text", text: SYSTEM, cache_control: { type: "ephemeral" } }],
+    tools: [TOOL],
+    tool_choice: { type: "tool", name: TOOL.name },
+    messages: [{ role: "user", content: userText }],
+  });
+}
 
 /** Klijent ne razlikuje „polje ne postoji" od „polje je null", pa null izbacujemo. */
 function dropNulls(input: Record<string, unknown>): Record<string, unknown> {
@@ -118,6 +165,7 @@ Deno.serve(async (req: Request) => {
     if (userErr || !userData.user) return json({ ok: false, reason: "unauthorized" }, 401);
 
     const body = (await req.json()) as {
+      ping?: boolean;
       text?: string;
       mode?: string;
       context?: unknown;
@@ -125,32 +173,46 @@ Deno.serve(async (req: Request) => {
       tomorrowDate?: string;
     };
     const key = Deno.env.get("ANTHROPIC_API_KEY");
+    // Zagrevanje: app ga šalje pri otvaranju i na pritisak mikrofona. Izmereno:
+    // sam izolat se budi za ~3 s, ali PRVI Claude poziv u svežem izolatu traje
+    // 16–18 s (inicijalizacija SDK-a, veza, upis keša) — ping koji samo vrati
+    // „pong" to ne zagreva. Zato ping napravi jedan sićušan pravi poziv sa istim
+    // prefiksom: zagreje SDK, vezu i keš prompta (TTL 5 min). Cena: ~1.500
+    // keširanih tokena po 0,1x i ~60 izlaznih — stoti deo centa, najviše jednom
+    // u 90 s po korisniku. Gateway je već odbio svakog bez naloga.
+    if (body.ping) {
+      if (!key) return json({ ok: true, pong: true, warmed: false });
+      const t0 = Date.now();
+      try {
+        await callClaude(key, "ping", 128);
+      } catch (err) {
+        console.error("[ai-process] warm", err);
+        return json({ ok: true, pong: true, warmed: false });
+      }
+      return json({ ok: true, pong: true, warmed: true, ms: Date.now() - t0 });
+    }
     if (!key || !body.text || body.text.length > MAX_TEXT_LEN) {
       return json({ ok: false, reason: key ? "bad_input" : "no_api_key" });
     }
 
-    const anthropic = new Anthropic({ apiKey: key });
-    const response = await anthropic.messages.create({
-      model: "claude-opus-5",
-      max_tokens: 4096,
-      // Kratka ekstrakcija — niska potrošnja i brži odgovor, što je bitno za glas.
-      output_config: { effort: "low" },
-      system: SYSTEM,
-      tools: [TOOL],
-      tool_choice: { type: "tool", name: TOOL.name },
-      messages: [
-        {
-          role: "user",
-          content: `Režim: ${body.mode}
+    const response = await callClaude(
+      key,
+      `Režim: ${body.mode}
 Danas: ${body.todayDate}
 Sutra: ${body.tomorrowDate}
 Kontekst: ${JSON.stringify(body.context)}
 
 Rečenica: "${body.text}"`,
-        },
-      ],
-    });
+      4096,
+    );
 
+    // Dijagnostika bez ličnih podataka: model i tokeni — iz logova se vidi da li
+    // keš radi (cache_read > 0 od drugog poziva) i koji model stvarno odgovara.
+    const u = response.usage;
+    console.log(
+      `[ai-process] model=${response.model} in=${u.input_tokens} out=${u.output_tokens} ` +
+        `cache_write=${u.cache_creation_input_tokens ?? 0} cache_read=${u.cache_read_input_tokens ?? 0}`,
+    );
     if (response.stop_reason === "refusal") {
       return json({ ok: false, reason: "refusal" });
     }

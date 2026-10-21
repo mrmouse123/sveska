@@ -8,6 +8,7 @@ import {
   type VoiceStatus,
 } from "@/lib/sveska/voiceService";
 import { canRecord, createRecorderSession, shouldUseServerStt } from "@/lib/sveska/recorderService";
+import { warmAi } from "@/lib/sveska/aiService";
 
 export function useSpeechRecognition(onFinal: (text: string) => void) {
   const [supported, setSupported] = useState(false);
@@ -61,6 +62,8 @@ export function useSpeechRecognition(onFinal: (text: string) => void) {
   );
 
   const start = useCallback(() => {
+    // Dok korisnik govori (i dok Groq prevodi snimak), Claude funkcija se već budi.
+    warmAi();
     setError(null);
     setErrorCode(null);
     setTranscript("");

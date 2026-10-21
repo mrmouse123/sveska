@@ -818,3 +818,41 @@ prva poruka (bila ručno „Petre", sad isti izvor).
 - Napomena: ime je i dalje demo („Petar") — u bazi nema imena korisnika (`profiles`
   ima samo `role`). Pravo ime bi tražilo kolonu i ekran za unos; nije traženo.
 
+# Faza 18 — brži AI put: Haiku 5.5, keš, zagrevanje, paralelno (2026-10-22)
+
+Jovan: „možemo li ubrzati Groq → Claude → tumačenje → upis". Izmereno pre: Groq 2–4 s,
+Claude hladan start 21 s (app ga posle 20 s odbaci → lokalni interpreter), topao 4–10 s.
+
+Urađeno (ai-process v10, klijent u istom komitu):
+1. Zagrevanje: `warmAi()` u aiService — ping pri otvaranju app-a (ModeApp mount) i na
+   pritisak mikrofona (hook `start`), najviše jednom u 90 s, greške se gutaju.
+   PRVI pokušaj (ping samo vrati „pong") zagrejao je izolat (3 s) ali NE i prvi Claude
+   poziv (i dalje 16–18 s) → ping sada pravi jedan sićušan pravi poziv sa istim
+   prefiksom (zagreje SDK, vezu i keš). Rezultat: ping 6,4 s u pozadini, prva prava
+   komanda posle njega 3,0 s.
+2. Model `claude-opus-5` → `claude-haiku-5-5`. Dokumentacija (`claude-api` skill):
+   Haiku 5.5 PRIHVATA prisilni `tool_choice` (odbijaju ga Opus 5.5 / Sonnet 5.5), pa
+   strukturisani izlaz nije bio potreban; prisilni alat preskače razmišljanje.
+3. Keš prefiksa: `cache_control` na sistemskom bloku (tools → system → messages).
+   Logovi: cache_write=1558 na prvom pozivu, cache_read=1558 na svakom sledećem.
+4. Paralelno: ista `warmAi()` ide na početku snimanja, dok Groq još prevodi.
+
+Usput, zbog ponovnog objavljivanja: enum alata dobio CANCEL_JOB / UPDATE_JOB /
+ADD_TEAM_MEMBER (uživo je „otkaži posao kod Petrovića" vraćao UNKNOWN) i sva polja
+šeme postala obavezna uz null — dok su bila opciona, Haiku je u dodeli vraćao SAMO
+radnika; sada vraća klijenta, datum, vreme, cenu, valutu.
+
+Uživo (Chrome sesija, kroz gateway), posle zagrevanja:
+| rečenica | akcija | s |
+| pošalji Marka kod Petrovića sutra u deset, cena sto evra | ASSIGN_JOB, sva polja | 3,0 |
+| pošalji Marka kod Ane Marković u sedamnaest | ASSIGN_JOB, Ana Marković, 17:00 | 4,1 |
+| ko mi je dužan | ANSWER (Petrović 100, neplaćeno) | 2,7 |
+| otkaži posao kod Petrovića | CANCEL_JOB, Petar Petrović | 2,3 |
+| Marko kod Milana … a Nikola kod Ane … | CREATE_ASSIGNMENTS, 2 stavke | 2,2 |
+| pomeri posao kod Petrovića na petnaest sati | UPDATE_JOB, 15:00 | 3,2 |
+| dodaj Nikolu u tim | ADD_TEAM_MEMBER, Nikola Simić | 3,4 |
+
+NIJE dokazano: ponašanje na telefonu od glasa do kartice (merenje je iz desktop Chrome-a
+bez Groq koraka). Timeout od 20 s nije diran.
+- [ ] Jovan: jedna komanda na iPhone-u i jedna na Androidu — subjektivno „koliko čeka".
+

@@ -148,3 +148,10 @@ Jednostavnije i ispravnije: isprazni red pa baci prvu grešku.
 **16. Kad je izvor istine podeljen između baze i lokalne kopije, baza pobeđuje.**
 Vlasnik i radnik dele organizaciju; lokalna kopija je vraćala radnikove izmene
 na staro. Hidracija ide iz baze, lokalno ostaje samo offline keš.
+
+## 29. Zagrevanje mora da prođe kroz isti put kao pravi poziv
+Ping koji samo vrati „pong" zagrejao je izolat (21 s → 3 s), ali prvi Claude poziv je i
+dalje trajao 16–18 s — skupi deo (SDK, veza, upis keša) nije bio na putu pinga. Tek ping
+koji napravi sićušan pravi poziv sa istim prefiksom spušta prvu komandu na 3 s. Pravilo:
+zagrevaj ono što korisnik čeka, ne ono što je lako zagrejati; izmeri posle, ne pretpostavi.
+

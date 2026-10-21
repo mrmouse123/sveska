@@ -25,6 +25,41 @@ function buildContext(state: DemoState, mode: Mode) {
   };
 }
 
+const WARM_EVERY_MS = 90_000;
+let lastWarm = 0;
+
+/**
+ * Zagrevanje edge funkcije. Hladan start je merio 21 s, a app čeka 20 — prva
+ * komanda posle pauze je zato tiho padala na lokalni interpreter. Ping budi
+ * funkciju dok korisnik još bira šta će reći (otvaranje app-a, pritisak
+ * mikrofona, početak snimanja); Claude se pri pingu ne poziva, pa ne košta.
+ * Najviše jednom u 90 s; greške se gutaju — ovo je optimizacija, ne funkcija.
+ */
+export function warmAi(): void {
+  const now = Date.now();
+  if (now - lastWarm < WARM_EVERY_MS) return;
+  lastWarm = now;
+  void (async () => {
+    try {
+      const cfg = getSupabaseConfig();
+      if (!cfg) return;
+      const session = await getSession();
+      if (!session) return;
+      await fetch(`${cfg.url}/functions/v1/ai-process`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${session.access_token}`,
+          apikey: cfg.anonKey,
+        },
+        body: JSON.stringify({ ping: true }),
+      });
+    } catch {
+      /* zagrevanje nije uspelo — pravi poziv će sam probuditi funkciju */
+    }
+  })();
+}
+
 /**
  * Primary AI entry point. Calls the Supabase edge function `ai-process` with the
  * user's JWT and transparently falls back to the deterministic local interpreter

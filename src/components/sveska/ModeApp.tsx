@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
 import {
   Home,
@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useDemo, MODE_LABEL } from "@/lib/sveska/store";
 import { useAuth } from "@/lib/sveska/authContext";
+import { warmAi } from "@/lib/sveska/aiService";
 import type { Mode } from "@/lib/sveska/types";
 import { searchAll } from "@/lib/sveska/queries";
 import { cn } from "@/lib/utils";
@@ -82,6 +83,8 @@ const NAV: Record<Mode, { id: Section; label: string; icon: typeof Home }[]> = {
 export function ModeApp({ mode }: { mode: Mode }) {
   const { state, resetDemo, investorMode, setInvestorMode, markNotificationRead } = useDemo();
   const { user, signOut } = useAuth();
+  // Zagrej Claude funkciju čim se app otvori — prva komanda ne sme da čeka hladan start.
+  useEffect(() => warmAi(), []);
   const [section, setSection] = useState<Section>("home");
   const [query, setQuery] = useState("");
   const [resetOpen, setResetOpen] = useState(false);
