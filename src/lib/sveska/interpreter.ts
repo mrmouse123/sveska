@@ -396,12 +396,19 @@ const ACTIVE = new Set(["ZAKAZANO", "DODELJENO", "U TOKU", "ČEKA NAPLATU"]);
  * pa korisnik vidi šta će se desiti. Odbijanje bi komandu činilo beskorisnom
  * u realnom imeniku, gde klijent po pravilu ima više poslova.
  */
-function targetJob(state: DemoState, customerName: string | undefined, onDate?: string) {
+export function targetJob(
+  state: DemoState,
+  mode: Mode,
+  customerName: string | undefined,
+  onDate?: string,
+) {
   if (!customerName) return undefined;
   const c = state.customers.find((x) => x.name === customerName);
   if (!c) return undefined;
+  // Samo poslovi tekućeg režima: u solo režimu otkazivanje ne sme da pogodi
+  // posao tima sa istim klijentom (AI kontekst ionako vidi samo tekući režim).
   const pool = state.jobs
-    .filter((j) => j.customerId === c.id && ACTIVE.has(j.status))
+    .filter((j) => j.scope === mode && j.customerId === c.id && ACTIVE.has(j.status))
     .filter((j) => (onDate ? j.date === onDate : true))
     .sort((a, b) => `${a.date}${a.time}`.localeCompare(`${b.date}${b.time}`));
   const now = today();
@@ -457,7 +464,7 @@ export function interpretLocal(text: string, mode: Mode, state: DemoState): AiRe
 
   // Otkazivanje postojećeg posla: „Otkaži posao kod Marka Petrovića."
   if (CANCEL_VERB.test(t)) {
-    const job = targetJob(state, customers[0], onDate);
+    const job = targetJob(state, mode, customers[0], onDate);
     if (!job) {
       return {
         intent: "CANCEL_JOB",
@@ -484,7 +491,7 @@ export function interpretLocal(text: string, mode: Mode, state: DemoState): AiRe
 
   // Izmena postojećeg posla: vreme, datum ili cena.
   if (UPDATE_VERB.test(t)) {
-    const job = targetJob(state, customers[0], onDate);
+    const job = targetJob(state, mode, customers[0], onDate);
     const price = parsePrice(text);
     const hasChange = Boolean(time) || price !== undefined || saidDate;
     if (!job || !hasChange) {

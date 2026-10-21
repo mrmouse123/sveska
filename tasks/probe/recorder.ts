@@ -35,6 +35,7 @@ g["window"] = globalThis;
 g["isSecureContext"] = true;
 g["location"] = { hostname: "localhost" };
 
+let throwOnStart = false;
 class FakeRecorder {
   static isTypeSupported = (t: string) => t === "audio/webm;codecs=opus";
   state: "inactive" | "recording" = "inactive";
@@ -47,6 +48,11 @@ class FakeRecorder {
     this.mimeType = opts?.mimeType ?? "";
   }
   start() {
+    if (throwOnStart) {
+      const e = new Error("track ended");
+      e.name = "InvalidStateError";
+      throw e;
+    }
     this.state = "recording";
     this.timer = setInterval(() => {
       this.ondataavailable?.({ data: new Blob(["x".repeat(1500)], { type: "audio/webm" }) });
@@ -246,6 +252,100 @@ function session(deps: RecorderDeps) {
   check("kod greške not-allowed", x.errorCode === "not-allowed", String(x.errorCode));
   check("ništa nije poslato", seen.length === 0);
   getUserMediaImpl = async () => fakeStream;
+}
+
+// ---------------------------------------------------------------- J: ZAVRŠI dok je upit za dozvolu otvoren
+{
+  stoppedTracks = 0;
+  let grant: (() => void) | null = null;
+  getUserMediaImpl = () => new Promise((res) => void (grant = () => res(fakeStream)));
+  const { deps, seen } = makeDeps(() => okJson({ ok: true, text: "x" }));
+  const x = session(deps);
+  x.s.startListening();
+  await wait(10);
+  x.s.finishVoiceInput(); // korisnik pritisne ZAVRŠI pre nego što dâ dozvolu
+  await wait(20);
+  console.log("\n=== J: ZAVRŠI pre dozvole ===");
+  check("greška no-speech, ne zaglavljen panel", x.errorCode === "no-speech", String(x.errorCode));
+  check("poslednji status je error", x.statuses.at(-1) === "error", String(x.statuses.at(-1)));
+  check("ništa nije poslato", seen.length === 0, `zahteva: ${seen.length}`);
+  grant?.(); // dozvola stigne kasnije — tok se pušta, ništa se ne snima
+  await wait(20);
+  check("zakasnela dozvola pušta mikrofon", stoppedTracks >= 1, `stop() ${stoppedTracks}x`);
+  getUserMediaImpl = async () => fakeStream;
+}
+
+// ---------------------------------------------------------------- K: start() baci
+{
+  stoppedTracks = 0;
+  throwOnStart = true;
+  const { deps, seen } = makeDeps(() => okJson({ ok: true, text: "x" }));
+  const x = session(deps);
+  x.s.startListening();
+  await wait(30);
+  console.log("\n=== K: MediaRecorder.start() baci ===");
+  check("greška audio-capture", x.errorCode === "audio-capture", String(x.errorCode));
+  check("mikrofon pušten", stoppedTracks >= 1, `stop() ${stoppedTracks}x`);
+  check("ništa nije poslato", seen.length === 0);
+  throwOnStart = false;
+}
+
+// ---------------------------------------------------------------- L: OTKAŽI odmah posle ZAVRŠI
+{
+  const { deps, seen } = makeDeps(() => okJson({ ok: true, text: "ne sme stići" }));
+  const x = session(deps);
+  x.s.startListening();
+  await wait(30);
+  x.s.finishVoiceInput();
+  x.s.cancelVoiceSession(); // u istom tiku, pre nego što onstop stigne
+  await wait(30);
+  console.log("\n=== L: OTKAŽI u procepu posle ZAVRŠI ===");
+  check("ništa nije poslato", seen.length === 0, `zahteva: ${seen.length}`);
+  check("ništa nije isporučeno", x.delivered === null, String(x.delivered));
+  check("status idle", x.statuses.at(-1) === "idle", String(x.statuses.at(-1)));
+}
+
+// ---------------------------------------------------------------- M: dozvola odbijena POSLE otkaza
+{
+  let deny: (() => void) | null = null;
+  getUserMediaImpl = () =>
+    new Promise((_, rej) =>
+      void (deny = () => {
+        const e = new Error("denied");
+        e.name = "NotAllowedError";
+        rej(e);
+      }),
+    );
+  const { deps } = makeDeps(() => okJson({ ok: true, text: "x" }));
+  const x = session(deps);
+  x.s.startListening();
+  await wait(10);
+  x.s.cancelVoiceSession();
+  deny?.();
+  await wait(20);
+  console.log("\n=== M: dozvola odbijena posle otkaza ===");
+  check("nema greške na početnom ekranu", x.errorCode === null, String(x.errorCode));
+  check("status ostaje idle", x.statuses.at(-1) === "idle", String(x.statuses.at(-1)));
+  getUserMediaImpl = async () => fakeStream;
+}
+
+// ---------------------------------------------------------------- N: mapiranje razloga servera
+{
+  console.log("\n=== N: razlozi servera -> kod greške ===");
+  for (const [reason, want] of [
+    ["rate_limited", "stt-unavailable"],
+    ["timeout", "stt-unavailable"],
+    ["too_large", "unknown"],
+    ["provider_error", "network"],
+  ] as const) {
+    const { deps } = makeDeps(() => okJson({ ok: false, reason }));
+    const x = session(deps);
+    x.s.startListening();
+    await wait(30);
+    x.s.finishVoiceInput();
+    await wait(30);
+    check(`${reason} -> ${want}`, x.errorCode === want, String(x.errorCode));
+  }
 }
 
 // ---------------------------------------------------------------- I: izbor puta

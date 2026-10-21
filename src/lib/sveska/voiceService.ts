@@ -177,7 +177,12 @@ export function createVoiceSession(cb: VoiceCallbacks) {
     const current = () => r === rec;
 
     r.onstart = () => {
-      if (current() && active) setStatus("listening");
+      if (!current() || !active) return;
+      setStatus("listening");
+      // Pravilo tišine se naoružava od prvog starta, ne od prve reči: ko otvori
+      // mikrofon i ne kaže ništa, inače bi vrteo restart-petlju bez kraja, a
+      // panel tvrdi „automatski završavam posle 10 s tišine".
+      if (!silenceTimer) resetSilenceTimer();
     };
 
     r.onresult = (event: unknown) => {

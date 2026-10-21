@@ -23,10 +23,6 @@ const isRole = (v: unknown): v is Role => typeof v === "string" && v in RANK;
 /** zadruga ⊃ tim ⊃ solo */
 export const canAccess = (role: Role, mode: Mode) => RANK[role] >= RANK[mode];
 
-/** Every mode this role may open, lowest first. */
-export const allowedModes = (role: Role): Mode[] =>
-  (Object.keys(RANK) as Mode[]).filter((m) => canAccess(role, m));
-
 /**
  * Reads the signed-in user's role; RLS returns only their own row.
  * Falls back to the lowest level when there is no backend, no session, or no row yet,

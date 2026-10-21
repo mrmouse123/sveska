@@ -120,10 +120,16 @@ export function VoiceOverlay({ mode }: { mode: Mode }) {
                 <span className="inline-block size-2.5 animate-pulse rounded-full bg-destructive" />
                 {speech.status === "requesting_permission"
                   ? "ČEKAMO DOZVOLU ZA MIKROFON…"
-                  : "SVESKA SLUŠA..."}
+                  : speech.status === "processing"
+                    ? "PREVODIM SNIMAK…"
+                    : "SVESKA SLUŠA..."}
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {speech.serverMode ? "Pričaj, pa pritisni ZAVRŠI." : "Pričaj prirodno, ne prekidam te."}
+                {speech.status === "processing"
+                  ? "Snimak je poslat, tekst stiže za par sekundi."
+                  : speech.serverMode
+                    ? "Pričaj, pa pritisni ZAVRŠI."
+                    : "Pričaj prirodno, ne prekidam te."}
               </p>
               <div className="my-6 flex h-14 items-center justify-center gap-1.5">
                 {Array.from({ length: 20 }).map((_, i) => (
@@ -161,9 +167,13 @@ export function VoiceOverlay({ mode }: { mode: Mode }) {
                 <p className="mt-3 text-sm text-muted-foreground">{speech.error}</p>
               ) : null}
               <div className="mt-5 flex flex-wrap justify-center gap-2">
-                <Button className="font-semibold" onClick={() => speech.finish()}>
-                  <Square className="size-4" /> ZAVRŠI
-                </Button>
+                {/* Na serverskom putu mikrofon je već pušten dok snimak putuje —
+                    ZAVRŠI tada ne radi ništa, pa se ne nudi; OTKAŽI prekida slanje. */}
+                {speech.status !== "processing" ? (
+                  <Button className="font-semibold" onClick={() => speech.finish()}>
+                    <Square className="size-4" /> ZAVRŠI
+                  </Button>
+                ) : null}
                 <Button
                   variant="outline"
                   className="font-semibold"

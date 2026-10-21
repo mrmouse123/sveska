@@ -25,6 +25,10 @@ Pravila:
 - Ako rečenicu ne razumeš, vrati UNKNOWN uz kratko objašnjenje u answer.`;
 
 const MAX_TEXT_LEN = 1000;
+/** Klijent šalje najviše 25 poslova; 20 000 znakova je višestruka rezerva. Server
+ *  ne veruje klijentu — ulaz za model je trošak, pa ima gornju granicu. */
+const MAX_CONTEXT_LEN = 20_000;
+const MODES = new Set(["solo", "tim", "zadruga"]);
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -93,8 +97,9 @@ const TOOL = {
             time: { type: ["string", "null"] },
             date: { type: ["string", "null"] },
             description: { type: ["string", "null"] },
+            price: { type: ["number", "null"] },
           },
-          required: ["team", "worker", "customer", "time", "date", "description"],
+          required: ["team", "worker", "customer", "time", "date", "description", "price"],
           additionalProperties: false,
         },
       },
@@ -123,9 +128,12 @@ const TOOL = {
   },
 };
 
+/** Klijent jednom po izolatu: tako ping zagreje i SDK, ne samo vezu i keš. */
+let anthropic: Anthropic | null = null;
+
 /** Jedan poziv modela — isti prefiks (alat + uputstvo) i za komandu i za zagrevanje. */
 function callClaude(key: string, userText: string, maxTokens: number) {
-  const anthropic = new Anthropic({ apiKey: key });
+  anthropic ??= new Anthropic({ apiKey: key });
   return anthropic.messages.create({
     // Haiku 5.5: izvlačenje „ko, kod koga, kad, koliko" iz jedne rečenice ne
     // traži najveći model; Opus 5 je davao 4–10 s, Haiku 2–3 s, uz ~20x nižu
@@ -145,9 +153,21 @@ function callClaude(key: string, userText: string, maxTokens: number) {
   });
 }
 
-/** Klijent ne razlikuje „polje ne postoji" od „polje je null", pa null izbacujemo. */
+/** Klijent ne razlikuje „polje ne postoji" od „polje je null", pa null izbacujemo —
+ *  i u stavkama višestruke dodele, da kartica ne crta prazna polja. */
 function dropNulls(input: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(input).filter(([, v]) => v !== null));
+  return Object.fromEntries(
+    Object.entries(input)
+      .filter(([, v]) => v !== null)
+      .map(([k, v]) => [
+        k,
+        Array.isArray(v)
+          ? v.map((item) =>
+              item && typeof item === "object" ? dropNulls(item as Record<string, unknown>) : item,
+            )
+          : v,
+      ]),
+  );
 }
 
 Deno.serve(async (req: Request) => {
@@ -191,8 +211,15 @@ Deno.serve(async (req: Request) => {
       }
       return json({ ok: true, pong: true, warmed: true, ms: Date.now() - t0 });
     }
-    if (!key || !body.text || body.text.length > MAX_TEXT_LEN) {
-      return json({ ok: false, reason: key ? "bad_input" : "no_api_key" });
+    if (!key) return json({ ok: false, reason: "no_api_key" });
+    const contextJson = JSON.stringify(body.context ?? {});
+    if (
+      !body.text ||
+      body.text.length > MAX_TEXT_LEN ||
+      contextJson.length > MAX_CONTEXT_LEN ||
+      !MODES.has(String(body.mode))
+    ) {
+      return json({ ok: false, reason: "bad_input" }, 400);
     }
 
     const response = await callClaude(
@@ -200,7 +227,7 @@ Deno.serve(async (req: Request) => {
       `Režim: ${body.mode}
 Danas: ${body.todayDate}
 Sutra: ${body.tomorrowDate}
-Kontekst: ${JSON.stringify(body.context)}
+Kontekst: ${contextJson}
 
 Rečenica: "${body.text}"`,
       4096,

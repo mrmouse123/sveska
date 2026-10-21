@@ -856,3 +856,62 @@ NIJE dokazano: ponašanje na telefonu od glasa do kartice (merenje je iz desktop
 bez Groq koraka). Timeout od 20 s nije diran.
 - [ ] Jovan: jedna komanda na iPhone-u i jedna na Androidu — subjektivno „koliko čeka".
 
+# Faza 19 — pregled arhitekture posle Faza 15–18 (2026-10-22)
+
+Jovan: „pogledaj arhitekturu sa boris-cherny i karpathy, proveri da li je sve u redu
+posle poslednjih edita". Tri nezavisna čitača (AI put, glasovni put, slojevi) + lint,
+tsc, madge (kružni uvozi: samo generisani router), sve probe.
+
+Struktura: zdrava. Acikličan `lib` (types/data/text listovi; queries → interpreter →
+aiService; supabaseService → auth/org/roles → authContext → store), React samo u dva
+provajdera, nijedna komponenta ne dira Supabase klijent, obe edge funkcije gate-uju
+`getUser()`, RLS org-scoped.
+
+Slaba tačka — i popravljena: spoj AI i lokalnog rezultata. `{...local, ...ai}` je bio
+bezopasan dok je AI znao samo CREATE/ASSIGN; posle Faze 18 (CANCEL/UPDATE u enumu):
+1. `jobId` ume da da samo lokal → AI otkazivanje nasleđivalo lokalni posao DRUGOG
+   klijenta, ili nije imalo posao pa je kartica vodila u „Nisam našla taj posao".
+2. „promeni cenu kod Petrovića" koji lokal čita kao CREATE_JOB donosio bi izmeni
+   datum „sutra" i vreme „09:00" — posao bi se tiho pomerio.
+3. Stavke višestruke dodele u šemi nisu imale `price` → svaki AI posao po 0.
+Popravka: `mergeAiResult` (aiService) — lokal popunjava rupe SAMO kad su se složili
+oko akcije; `jobId` uvek iznova iz spojenog klijenta kroz `targetJob` (sad javan,
+filtrira po režimu — solo ne pogađa posao tima); kad posla nema → UNKNOWN sa
+porukom, bez kartice. Šema: `price` u stavkama, sva polja obavezna, `dropNulls` i u
+stavkama. `tasks/probe/ai-merge.ts` 7 scenarija.
+
+Glas — snimač (iPhone) imao dva zaglavljena stanja u šavu „čekamo dozvolu → ZAVRŠI":
+- ZAVRŠI pre dozvole: prazan snimak je išao u „otkaz" granu koja ne može da se
+  desi (otkaz skida onstop) → panel zauvek na „čekamo dozvolu". Sad → no-speech.
+- `recorder.start()` izvan try: iOS ugasi traku kad se ekran zaključa → neuhvaćeno
+  odbijanje, mikrofon upaljen. Sad u try → audio-capture + puštanje mikrofona.
+- Otkaz u procepu posle ZAVRŠI slao snimak; dozvola odbijena posle otkaza davala
+  grešku na početnom ekranu; dvostruki start; razlozi servera (rate_limited,
+  timeout) mapirani na „proveri internet". Sve popravljeno, recorder.ts +5 odeljaka.
+- Prekidač: mikrofon otvoren bez ijedne reči nikad nije završavao (tajmer tišine se
+  naoružavao tek na prvu reč). Sad od prvog starta. `voice-silence.ts` (lažni sat).
+- Overlay: na serverskom putu status „processing" nije prikazivan (mikrofon već
+  pušten, a piše „snimam") — sad „PREVODIM SNIMAK…", ZAVRŠI sakriven.
+Sve nove probe su bile CRVENE na starom kodu (proverio zamenom fajla), zelene posle.
+
+Ostalo: server ograničava kontekst (20 000 znakova) i proverava režim; `warmAi`
+brojač se pomera odmah (dva poziva u istom tiku) i vraća ako ping ne krene; klijent
+Anthropic SDK jednom po izolatu; mrtav kod (`use-mobile.tsx`, `allowedModes`) uklonjen;
+`npm run probe` (scripts/probe.mjs) pokreće sve probe sa ispravnim stubom —
+`patch` i `sync` su „padale" samo zbog zastarelih uputstava; README proba ažuriran.
+
+POZNATE RUPE (odluke, ne bagovi) — zabeležene, ne dirane:
+- Demo podaci na pravim nalozima: `DEMO_USER`/„Petar", `w-petar` kao vlasnik u
+  Common/OrgScreens/actions, „Reset demo" vraća seed redove preko izmenjenih seed
+  redova (korisnikovi redovi sa svojim ID-jevima ostaju). Rešenje traži
+  `profiles.display_name` + `owner_worker_id` — proizvodna odluka.
+- Enum akcija ručno sinhronizovan na dve strane (types.ts ↔ funkcija); deljeni
+  `_shared/aiActions.ts` je moguć, nije rađen (klijent ne proverava enum u runtime-u).
+- RLS: polise `to public` umesto `to authenticated`; `org_members` select vidi sve
+  članove; samo `remove_member` ima revoke/grant blok. Nije eksploatabilno.
+- Orkestracija `processVoiceCommand → executeAiResult` postoji u ChatScreen i
+  VoiceOverlay (ChatScreen izvršava bez potvrde).
+- Ping na serveru nema sopstveni prag (90 s je samo na klijentu).
+- [ ] Jovan: iPhone test — ZAVRŠI dok je upit za mikrofon otvoren mora da vrati
+  „Nisam čula…", ne zaglavljen panel.
+

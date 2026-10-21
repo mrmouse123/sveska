@@ -1,28 +1,49 @@
 # Probe skripte
 
-Pokreću se nad pravim izvorom iz `src/` (esbuild ih bundluje, node izvrši).
-Nisu vezane za package.json da ne bi uvele zavisnost od esbuild-a kao direktnog paketa.
+Pokreću se nad pravim izvorom iz `src/` (esbuild ih bandluje, node izvrši).
+Jedna komanda za sve, ili filter po imenu:
 
-    npx esbuild tasks/probe/demo.ts --bundle --format=esm --platform=node --outfile=.probe/demo.mjs && node .probe/demo.mjs
-    npx esbuild tasks/probe/t.ts    --bundle --format=esm --platform=node --outfile=.probe/t.mjs    && node .probe/t.mjs
+    npm run probe
+    npm run probe -- voice
 
-Sync probe traži stub za `import.meta.env`:
+`scripts/probe.mjs` svakoj probi ubacuje stub konfiguracije koja LIČI na pravu
+(`getSupabaseConfig` proverava oblik adrese i ključa; bez toga probe koje zovu
+`supabaseService` tiho postaju no-op i lažno padaju). Probe koje stubuju `fetch`
+same odlučuju šta se sa tom konfiguracijom dešava.
 
-    npx esbuild tasks/probe/sync.ts --bundle --format=esm --platform=node --outfile=.probe/sync.mjs \
-      --define:import.meta.env=globalThis.__ENV \
-      --banner:js='globalThis.__ENV={VITE_SUPABASE_URL:"http://stub.local",VITE_SUPABASE_ANON_KEY:"anon"};' && node .probe/sync.mjs
+Presuda po probi: `OK` / `LOSE`; `INFO` su istraživački ispisi bez presude
+(`demo`, `t`, `names`). Izlazni kod je 1 ako ijedna padne.
 
-- `demo.ts` — svih 10 ugrađenih demo komandi kroz `interpretLocal`
-- `t.ts` — `parseTime` i tri reprezentativne rečenice
-- `time.ts` — 31 tvrdnja o `parseTime` i ceni, uključujući lažne pozitive
-  („sedamdeset evra" nije 07:00, „cena 120.50 evra" nije 20:50) i opseg 0-23
-- `names2.ts` — 23 tvrdnje o imenima: `lookupCustomer` (tekst IZVUČEN iz
-  store.tsx skriptom, ne prepisan) + interpreter + slučaj kad radnik i klijent
-  imaju isti padežni oblik („Pošalji Marka kod Marka Petrovića")
-- `sync.ts` — serijalizacija upisa u Supabase sa stub-ovanim `fetch` (4 tvrdnje)
-- `patch.ts` — dokaz da izmena posla šalje SAMO izmenjene kolone: metod PATCH,
-  telo `{"paid":true}` bez `status`, i mapiranje camelCase -> kolona.
-  Traži iste `--define`/`--banner` zastavice kao `sync.ts`.
+## Šta koja proba dokazuje
+
+Razumevanje (interpreter, queries, text):
+- `time.ts` — `parseTime` i cena, lažni pozitivi („sedamdeset evra" nije 07:00) i opseg 0-23
+- `names2.ts` — imena i padeži: `lookupCustomer` + interpreter, radnik i klijent sa istim oblikom
+- `lang.ts` — ćirilica, dijakritika, strana imena kroz `deburr`
+- `regress.ts` — regresije ranijih faza
+- `commands.ts` — otkazivanje, izmena, član tima, više dodela; i `executeAiResult` nad lažnim akcijama
+- `vocative.ts` — vokativ za pozdrav (33 imena)
+- `demo.ts`, `t.ts`, `names.ts` — istraživački ispisi
+
+AI put:
+- `ai-merge.ts` — `mergeAiResult`: spajanje AI i lokalnog rezultata po akciji,
+  `jobId` iz spojenog klijenta, opseg režima, bez lokalnih podrazumevanih vrednosti u izmeni
+
+Glas:
+- `voice.ts` — pregledačev motor, dupliranje mehanizam 1 (zamena instance)
+- `voice-android.ts` — dupliranje mehanizam 2 (kumulativni rezultati, ponovna isporuka)
+- `voice-silence.ts` — mikrofon otvoren bez ijedne reči završava posle 10 s (lažni sat)
+- `recorder.ts` — serverski put (MediaRecorder + `transcribe`): zaglavlja, puštanje
+  mikrofona, kodovi grešaka, otkaz, tvrda granica, ZAVRŠI pre dozvole, `start()` baci,
+  otkaz u procepu posle ZAVRŠI, dozvola odbijena posle otkaza, izbor puta po uređaju
+
+Perzistencija (supabaseService):
+- `config.ts` — `getSupabaseConfig` i učitavanje stanja
+- `sync.ts` — serijalizacija upisa, novije stanje preživi pad starijeg
+- `patch.ts` — izmena posla šalje SAMO izmenjene kolone (PATCH, mapiranje camelCase -> kolona)
+
+Bez probe (poznato): `store.tsx` reduktor kao živ modul, `RequireAuth`/`authContext`
+mašina stanja, obe edge funkcije (proveravaju se uživo kroz gateway, vidi `tasks/todo.md`).
 
 Uvozi su relativni (`../../src/...`), a esbuild ih razrešava iz putanje fajla —
 pokreći komande iz korena projekta.

@@ -102,11 +102,21 @@ export async function transcribeAudio(
     | null;
   if (!data) return { ok: false, code: "network" };
   if (data.ok) return { ok: true, text: (data.text ?? "").trim() };
-  // Provajder nije podešen ili odbija ključ — korisniku je to ista stvar.
-  if (data.reason === "no_api_key" || data.reason === "provider_auth") {
-    return { ok: false, code: "stt-unavailable" };
+  // Provajder nije podešen, odbija ključ, ograničio nas je ili nije stigao —
+  // ni u jednom od tih slučajeva internet korisnika nije kriv, pa poruka ne
+  // sme da glasi „proveri internet".
+  switch (data.reason) {
+    case "no_api_key":
+    case "provider_auth":
+    case "rate_limited":
+    case "timeout":
+      return { ok: false, code: "stt-unavailable" };
+    case "bad_input":
+    case "too_large":
+      return { ok: false, code: "unknown" };
+    default:
+      return { ok: false, code: "network" };
   }
-  return { ok: false, code: "network" };
 }
 
 function pickMimeType(): string | undefined {
@@ -168,6 +178,7 @@ export function createRecorderSession(
   }
 
   async function startListening() {
+    if (active) return; // dva starta bi otvorila dva toka; prvi bi ostao bez stop()
     if (!canRecord()) return fail("unsupported");
     if (!isSecureContextOk()) return fail("insecure");
     chunks = [];
@@ -180,6 +191,9 @@ export function createRecorderSession(
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (err) {
+      // Otkazano dok je upit za dozvolu bio otvoren: korisnik je već na
+      // početnom ekranu i ne sme tamo da dobije „nema dozvolu".
+      if (!active) return;
       const name = err instanceof Error ? err.name : "";
       if (name === "NotAllowedError" || name === "SecurityError") return fail("not-allowed");
       if (name === "NotFoundError" || name === "OverconstrainedError") return fail("audio-capture");
@@ -195,16 +209,19 @@ export function createRecorderSession(
     mime = picked ?? "";
     try {
       recorder = picked ? new MediaRecorder(stream, { mimeType: picked }) : new MediaRecorder(stream);
+      recorder.ondataavailable = (e: BlobEvent) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+      recorder.onstop = () => void handleStop();
+      recorder.onerror = () => fail("audio-capture");
+      // Komadi na svaku sekundu, da snimak ne zavisi od jednog velikog `stop`.
+      // start() ume da baci (iOS ugasi zvučnu traku kad se ekran zaključa između
+      // dozvole i starta) — izvan try bi to bilo neuhvaćeno odbijanje sa
+      // mikrofonom koji ostaje upaljen.
+      recorder.start(1000);
     } catch {
       return fail("audio-capture");
     }
-    recorder.ondataavailable = (e: BlobEvent) => {
-      if (e.data && e.data.size > 0) chunks.push(e.data);
-    };
-    recorder.onstop = () => void handleStop();
-    recorder.onerror = () => fail("audio-capture");
-    // Komadi na svaku sekundu, da snimak ne zavisi od jednog velikog `stop`.
-    recorder.start(1000);
     setStatus("listening");
     capTimer = setTimeout(() => finishVoiceInput(), deps.maxMs);
   }
@@ -213,10 +230,10 @@ export function createRecorderSession(
     const blob = new Blob(chunks, { type: mime || chunks[0]?.type || "audio/webm" });
     recorder = null;
     releaseMic();
-    if (finished && !active && upload === null && blob.size === 0) {
-      // Stigli smo ovde preko otkaza — ništa ne šaljemo.
-      return;
-    }
+    // Otkaz nikad ne stiže ovde (otkaz skida onstop pre stop()), pa prazan snimak
+    // znači samo jedno: ZAVRŠI pre ijednog komada — recimo dok je upit za dozvolu
+    // još otvoren. Ranija „otkaz" grana je taj slučaj gutala i panel je ostajao na
+    // „čekamo dozvolu" zauvek.
     if (blob.size === 0) return fail("no-speech");
 
     setStatus("processing");
@@ -251,13 +268,18 @@ export function createRecorderSession(
       upload.abort();
       upload = null;
     }
-    if (recorder && recorder.state !== "inactive") {
+    if (recorder) {
+      // Rukovaoci se skidaju i kad je snimač već „inactive": posle ZAVRŠI su
+      // poslednji dataavailable i stop još u redu događaja, i bez ovoga bi
+      // otkaz u tom procepu ipak poslao snimak i isporučio tekst.
       recorder.ondataavailable = null;
       recorder.onstop = null;
-      try {
-        recorder.stop();
-      } catch {
-        /* već stao */
+      if (recorder.state !== "inactive") {
+        try {
+          recorder.stop();
+        } catch {
+          /* već stao */
+        }
       }
     }
     recorder = null;

@@ -65,12 +65,14 @@ console.log("\n=== A: otkazivanje i izmena postojećeg posla ===");
   );
 }
 {
-  const r = run("Pomeri posao kod Ane Marković na 15 časova.", "solo");
+  // Opseg: u solo režimu Ana ima samo ZAVRŠEN posao; aktivan je u timu (targetJob
+  // od 2026-10-22 ne gleda preko opsega — solo ne sme da pogodi posao tima).
+  const r = run("Pomeri posao kod Ane Marković na 15 časova.", "tim");
   check("pomeranje daje UPDATE_JOB", r.suggestedAction, "UPDATE_JOB");
   check("novo vreme", r.time, "15:00");
 }
 {
-  const r = run("Promeni cenu posla kod Milana Ilića na 200 evra.", "solo");
+  const r = run("Promeni cenu posla kod Milana Ilića na 200 evra.", "tim");
   check("promena cene daje UPDATE_JOB", r.suggestedAction, "UPDATE_JOB");
   check("nova cena", r.price, 200);
 }
@@ -142,9 +144,9 @@ console.log("\n=== izvršavanje: komande moraju da MENJAJU stanje ===");
   check("otkazivanje zove setJobStatus sa OTKAZANO", calls[0]?.includes(":OTKAZANO"), true);
   console.log(`        poruka: ${JSON.stringify(msg1)}`);
 
-  const upd = run("Pomeri posao kod Ane Marković na 15 časova.", "solo");
+  const upd = run("Pomeri posao kod Ane Marković na 15 časova.", "tim");
   calls.length = 0;
-  const msg2 = executeAiResult(upd, "solo", s, fake as never);
+  const msg2 = executeAiResult(upd, "tim", s, fake as never);
   check("izmena zove updateJob sa novim vremenom", calls[0]?.includes('"time":"15:00"'), true);
   console.log(`        poruka: ${JSON.stringify(msg2)}`);
 
