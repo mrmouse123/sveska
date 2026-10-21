@@ -57,17 +57,22 @@ Prijava koristi samo email+lozinku (`signInWithPassword`), bez preusmeravanja �
 ovo **nije blokada za prijavu**. Jeste bitno za link iz mejla potvrde pri registraciji:
 bez Site URL-a taj link vodi u prazno.
 
-## A5b. Glas preko servera — uspavano (odluka: bez STT provajdera)
+## A5b. Glas preko servera (iPhone, Firefox) — Groq
 
-Glas radi kroz pregledačev motor svuda gde ga ima: Chrome (Google), iOS Safari
-(Apple — za srpski NIJE proveren; ako motor ne zna srpski, app kaže „Ovaj uređaj
-ne prepoznaje srpski govor" i korisnik kuca). **Claude API ne prima zvuk**, pa
-Claude ključ ne može da zameni STT provajdera.
+Na Chrome-u glas radi kroz pregledač, besplatno. Na **iOS Safariju** Apple-ov
+motor slabo zna srpski, a Firefox motora nema — tamo aplikacija snima zvuk i
+šalje ga edge funkciji `transcribe`, koja ga prosleđuje Groq-u (Whisper).
+**Claude API ne prima zvuk**, pa Claude ključ ovde ne pomaže — zato su dva
+ključa, svaki za svoj posao:
 
-Edge funkcija `transcribe` i snimač ostaju u kodu i uključuju se samo u
-pregledačima bez ikakvog motora (Firefox). Ako se jednog dana odluči za
-provajdera, dovoljno je postaviti `STT_API_KEY` i u `recorderService.ts` vratiti
-`isIos() ||` u `shouldUseServerStt()` — tada iPhone ponovo ide na server.
+| Secret | Čemu služi | Odakle |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | razumevanje komande (`ai-process`) | platform.claude.com → API keys |
+| `STT_API_KEY` | glas → tekst (`transcribe`) | console.groq.com → API Keys |
+
+`STT_BASE_URL` i `STT_MODEL` nisu potrebni: podrazumevano su Groq i
+`whisper-large-v3`. Bez `STT_API_KEY` korisnik na iPhone-u vidi „server nije
+podešen" i može da kuca; ništa se ne lomi.
 
 Preporučeno: **Groq** (Whisper large-v3, najbolji odnos srpskog i cene, ima besplatan
 nivo). Nalog na console.groq.com → API Keys → napravi ključ, pa:

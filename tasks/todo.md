@@ -777,7 +777,10 @@ NIJE dokazano i ne tvrdi se:
   nema čime da radi. `shouldUseServerStt()` sad vraća server SAMO bez motora
   (Firefox); iPhone ide na Apple-ov motor u Safariju. Kod servera ostaje — vidi
   DEPLOY.md A5b za povratak.
-- [ ] Jovan/tester: proveriti srpski na iPhone-u kroz Safari (Apple-ov motor).
+- [~] 2026-10-21 kasnije: Jovan ipak napravio Groq ključ → iPhone VRAĆEN na server
+  (`isIos() ||`), proba 30/30. Dva ključa, dva posla: `ANTHROPIC_API_KEY` (razumevanje),
+  `STT_API_KEY` (glas → tekst). Claude ključ se NE menja Groq ključem.
+- [ ] Jovan: `STT_API_KEY` u Edge Function Secrets; zatim test srpskog na iPhone-u.
 
 # Faza 16 — dupliranje na Androidu, DRUGI mehanizam (2026-10-21)
 
