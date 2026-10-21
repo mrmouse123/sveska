@@ -24,6 +24,7 @@ export type VoiceErrorCode =
   | "network"
   | "stt-unavailable"
   | "signin-required"
+  | "language-not-supported"
   | "unknown";
 
 export const VOICE_MESSAGES: Record<VoiceErrorCode, string> = {
@@ -38,6 +39,8 @@ export const VOICE_MESSAGES: Record<VoiceErrorCode, string> = {
   "stt-unavailable":
     "Prepoznavanje govora preko servera još nije podešeno. Možeš i da otkucaš komandu.",
   "signin-required": "Prijavi se da bi glasovni unos radio na ovom uređaju.",
+  "language-not-supported":
+    "Ovaj uređaj ne prepoznaje srpski govor. Možeš i da otkucaš komandu.",
 };
 
 type SR = {
@@ -220,6 +223,9 @@ export function createVoiceSession(cb: VoiceCallbacks) {
       }
       if (raw === "audio-capture") return fail("audio-capture");
       if (raw === "network") return fail("network");
+      // iOS Safari za jezik koji Apple-ov motor nema vraća baš ovaj kod —
+      // tester mora da vidi razlog, ne opšte „nije dostupan".
+      if (raw === "language-not-supported") return fail("language-not-supported");
       fail("unknown");
     };
 

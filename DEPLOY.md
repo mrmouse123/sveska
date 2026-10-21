@@ -60,8 +60,9 @@ bez Site URL-a taj link vodi u prazno.
 ## A5b. Glas preko servera — uspavano (odluka: bez STT provajdera)
 
 Glas radi kroz pregledačev motor svuda gde ga ima: Chrome (Google), iOS Safari
-(Apple — srpski mu je slab, ali to je motor koji postoji). **Claude API ne prima
-zvuk**, pa Claude ključ ne može da zameni STT provajdera.
+(Apple — za srpski NIJE proveren; ako motor ne zna srpski, app kaže „Ovaj uređaj
+ne prepoznaje srpski govor" i korisnik kuca). **Claude API ne prima zvuk**, pa
+Claude ključ ne može da zameni STT provajdera.
 
 Edge funkcija `transcribe` i snimač ostaju u kodu i uključuju se samo u
 pregledačima bez ikakvog motora (Firefox). Ako se jednog dana odluči za
