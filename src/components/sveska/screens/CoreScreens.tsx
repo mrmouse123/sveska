@@ -3,6 +3,7 @@ import { useDemo } from "@/lib/sveska/store";
 import type { Job, Mode } from "@/lib/sveska/types";
 import { customerName, eur, jobsOn, scopeJobs, stats, isOpen, isWorkerBusy } from "@/lib/sveska/queries";
 import { iso, today, tomorrow, DEMO_USER } from "@/lib/sveska/data";
+import { vocative } from "@/lib/sveska/text";
 import { JobDetailDialog, JobRow, NewJobDialog, SectionTitle, StatCard } from "../Common";
 import { InvestorNote } from "../InvestorNote";
 import { VoiceCard } from "../VoiceCard";
@@ -24,7 +25,7 @@ export function DashboardScreen({ mode, onNavigate }: { mode: Mode; onNavigate: 
     <div className="space-y-6">
       <header>
         <h1 className="font-display text-2xl font-bold sm:text-[28px]">
-          {mode === "zadruga" ? "Moja zadruga" : `Dobro jutro, ${DEMO_USER.firstName}e! 👋`}
+          {mode === "zadruga" ? "Moja zadruga" : `Dobro jutro, ${vocative(DEMO_USER.firstName)}! 👋`}
         </h1>
         <p className="mt-1 text-sm text-muted-foreground">
           {mode === "solo"

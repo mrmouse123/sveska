@@ -804,3 +804,17 @@ ceo tekst pa nije hvatao ponovljenu poslednju rečenicu — uhvatila proba.
 
 - [x] `tasks/probe/voice-android.ts` 7/7; `voice.ts` (mehanizam 1) i dalje 5/5
 - [ ] Jovan/tester: ponoviti na istom Androidu posle deploya
+
+# Faza 17 — vokativ u pozdravu (2026-10-21)
+
+Sa terena: „Dobro jutro, PETARE". Pozdrav je slepo lepio „e" na ime. Sada
+`vocative()` u `text.ts`: pravila (samoglasnik ostaje, -ica → -ice, k/g/h → če/že/še,
+š → še, meki suglasnici → u, ostali → e) + izuzeci sa nepostojanim „a" (Petar, Aleksandar,
+Mitar, Dimitar). Ženska dvosložna na -a (Maja → Majo) namerno ostaju: nominativ je
+uvek prihvatljiv, pogrešan vokativ nije. Primena: `CoreScreens` pozdrav i `ChatScreen`
+prva poruka (bila ručno „Petre", sad isti izvor).
+
+- [x] `tasks/probe/vocative.ts` 33/33
+- Napomena: ime je i dalje demo („Petar") — u bazi nema imena korisnika (`profiles`
+  ima samo `role`). Pravo ime bi tražilo kolonu i ekran za unos; nije traženo.
+

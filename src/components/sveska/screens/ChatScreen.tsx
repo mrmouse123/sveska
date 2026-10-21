@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useDemo } from "@/lib/sveska/store";
+import { DEMO_USER } from "@/lib/sveska/data";
+import { vocative } from "@/lib/sveska/text";
 import type { Mode } from "@/lib/sveska/types";
 import { processVoiceCommand } from "@/lib/sveska/aiService";
 import { executeAiResult } from "@/lib/sveska/actions";
@@ -20,7 +22,7 @@ const SUGGESTIONS = [
 export function ChatScreen({ mode }: { mode: Mode }) {
   const demo = useDemo();
   const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>([
-    { role: "ai", text: "Ćao Petre! Pitaj me bilo šta o svom poslu." },
+    { role: "ai", text: `Ćao ${vocative(DEMO_USER.firstName)}! Pitaj me bilo šta o svom poslu.` },
   ]);
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(false);
