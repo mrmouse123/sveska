@@ -83,9 +83,20 @@ export type VoiceCallbacks = {
   onFinish?: (finalText: string) => void;
 };
 
+const norm = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
+const joinText = (a: string, b: string) => `${a} ${b}`.replace(/\s+/g, " ").trim();
+
 export function createVoiceSession(cb: VoiceCallbacks) {
   let rec: SR | null = null;
   let finalText = "";
+  /** Konačan tekst iz sesija pre poslednjeg restarta prepoznavanja. */
+  let committed = "";
+  /** Konačan tekst TEKUĆE sesije — gradi se iznova iz celog niza, nikad dopisuje. */
+  let sessionFinal = "";
+  /** Poslednja konačna rečenica tekuće sesije — tačno ono što Android zna da ponovi. */
+  let lastFinal = "";
+  /** Čuvari posle restarta: poslednja rečenica prethodne sesije, i ceo njen tekst. */
+  let replayGuards: string[] = [];
   let silenceTimer: ReturnType<typeof setTimeout> | null = null;
   let tickTimer: ReturnType<typeof setInterval> | null = null;
   let deadline = 0;
@@ -95,6 +106,19 @@ export function createVoiceSession(cb: VoiceCallbacks) {
   let permissionBlocked = false;
 
   const setStatus = (s: VoiceStatus) => cb.onStatus?.(s);
+
+  /** Ako nova sesija počinje rečenicom kojom je prethodna završila, to je ponovna isporuka. */
+  function dropReplay(text: string): string {
+    const t = norm(text);
+    // Duži čuvar prvi, da ceo tekst sesije ima prednost nad poslednjom rečenicom.
+    for (const guard of [...replayGuards].sort((a, b) => b.length - a.length)) {
+      const g = norm(guard);
+      if (!g) continue;
+      if (t === g) return "";
+      if (t.startsWith(`${g} `)) return text.trim().slice(guard.trim().length).trim();
+    }
+    return text;
+  }
 
   function clearTimers() {
     if (silenceTimer) clearTimeout(silenceTimer);
@@ -162,13 +186,24 @@ export function createVoiceSession(cb: VoiceCallbacks) {
           [i: number]: { isFinal: boolean; 0: { transcript: string } };
         };
       };
+      // Android Chrome isporučuje KUMULATIVNO: svaki događaj nosi sve dosadašnje
+      // rečenice iznova, sve konačne, uz resultIndex 0. Dopisivanje od resultIndex
+      // je zato drugu rečenicu videlo kao „prva + druga", treću kao „prva + druga
+      // + treća" — i tako se svaka rečenica pojavljivala po više puta. Desktop
+      // šalje pravi indeks, pa tamo nije dupliralo. Lek: tekuća sesija se gradi
+      // iznova iz CELOG niza, pa je kumulativna isporuka bezopasna.
+      const finals: string[] = [];
       let interim = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
+      for (let i = 0; i < e.results.length; i++) {
         const res = e.results[i]!;
-        const chunk = res[0].transcript;
-        if (res.isFinal) finalText = (finalText + " " + chunk).trim();
-        else interim += chunk;
+        const chunk = res[0].transcript.trim();
+        if (!chunk) continue;
+        if (res.isFinal) finals.push(chunk);
+        else interim += ` ${chunk}`;
       }
+      sessionFinal = dropReplay(finals.join(" "));
+      if (finals.length) lastFinal = finals[finals.length - 1]!;
+      finalText = joinText(committed, sessionFinal);
       if (finalText || interim.trim()) resetSilenceTimer();
       cb.onTranscript?.(finalText, interim.trim());
     };
@@ -193,6 +228,13 @@ export function createVoiceSession(cb: VoiceCallbacks) {
       // Na Androidu `continuous` jedva radi, pa ovo okida posle SVAKE rečenice —
       // ono što je na desktopu redak slučaj, na telefonu je pravilo.
       if (!current() || !active || finished || permissionBlocked) return;
+      // Sesija se zatvara: njen tekst prelazi u `committed`, a poslednja rečenica
+      // postaje čuvar — Android je posle start() zna isporučiti još jednom.
+      // Android posle start() ponovi POSLEDNJU rečenicu; ceo tekst je tu za svaki slučaj.
+      replayGuards = [lastFinal, sessionFinal].filter(Boolean);
+      committed = joinText(committed, sessionFinal);
+      sessionFinal = "";
+      finalText = committed;
       try {
         r.start();
       } catch {
@@ -222,6 +264,10 @@ export function createVoiceSession(cb: VoiceCallbacks) {
     if (!isVoiceSupported()) return fail("unsupported");
     if (!isSecureContextOk()) return fail("insecure");
     finalText = "";
+    committed = "";
+    sessionFinal = "";
+    lastFinal = "";
+    replayGuards = [];
     hasSpoken = false;
     finished = false;
     permissionBlocked = false;

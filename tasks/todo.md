@@ -757,3 +757,23 @@ NIJE dokazano i ne tvrdi se:
 - kvalitet prepoznavanja srpskog na iPhone-u — nema iPhone-a, nema srpskog snimka,
   nema ključa. To je test na uređaju posle `STT_API_KEY`.
 - [ ] Jovan: STT_API_KEY (Groq) u Edge Function Secrets, pa test na iPhone-u.
+
+# Faza 16 — dupliranje na Androidu, DRUGI mehanizam (2026-10-21)
+
+Teren (video, Android 10 Chrome, 19.10.): „ponovo duplira sve". Prva popravka
+(siroče posle neuspelog `start()`) je bila tačna, ali nedovoljna.
+
+Uzrok 2: Android Chrome isporučuje rezultate KUMULATIVNO — svaki `onresult`
+nosi sve dosadašnje rečenice, sve konačne, uz `resultIndex = 0`. Kod koji
+dopisuje od `resultIndex` drugu rečenicu vidi kao „prva + druga". Proba
+`voice-android.ts` pre popravke: posle tri rečenice prva TRI puta, druga dva.
+Desktop šalje pravi indeks — zato „na desktopu radi, na telefonu duplira".
+
+Popravka: tekuća sesija se gradi IZNOVA iz celog niza (kumulativna isporuka
+postaje bezopasna); tekst prethodnih sesija u `committed`; posle restarta se
+odbacuje rečenica koju Android ponovo isporuči (čuvar = poslednja konačna
+rečenica, i ceo tekst sesije za svaki slučaj). Prvi pokušaj čuvara je držao
+ceo tekst pa nije hvatao ponovljenu poslednju rečenicu — uhvatila proba.
+
+- [x] `tasks/probe/voice-android.ts` 7/7; `voice.ts` (mehanizam 1) i dalje 5/5
+- [ ] Jovan/tester: ponoviti na istom Androidu posle deploya

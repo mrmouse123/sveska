@@ -128,6 +128,17 @@ Grana sa `r.start()` koji baci je na desktopu retka, a na Androidu PRAVILO —
 `continuous` tamo jedva radi, pa `onend` okida posle svake rečenice. Procena
 „retko" je bila tačna samo za uređaj na kom sam gledao.
 
+**27. Kad popravim jedan mehanizam a teren kaže „i dalje", pretpostavim DRUGI
+mehanizam sa istim simptomom — ne da popravka nije stigla.**
+Dupliranje na Androidu su bila DVA nezavisna uzroka: siroče posle neuspelog
+`start()` (popravljeno prvo) i kumulativni rezultati sa `resultIndex = 0`
+(propušteno). Prva popravka je bila tačna i nedovoljna.
+
+**28. Proba za platformsko ponašanje mora da oponaša TU platformu, ne moj model.**
+`voice.ts` je oponašao engine koji šalje samo nove rezultate — tako radi desktop.
+Android šalje sve dosadašnje, svaki put, sa indeksom 0. Proba koja je zelena na
+pogrešnom modelu uređaja ne dokazuje ništa za pravi uređaj.
+
 ## Dizajn
 
 **15. Kad popravka parkira grešku bez ičega što je prazni, popravka je pogrešna.**
