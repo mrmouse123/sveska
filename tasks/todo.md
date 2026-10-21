@@ -198,9 +198,11 @@ razlici umesto celog stanja, (3) baza kao jedini izvor istine i za vlasnika.
    Kartica se pojavljuje i kad AI padne — app tiho pređe na lokalni interpreter, pa
    sama kartica ništa ne dokazuje.
 3. Ako je pao: `query_logs` za `ai-process` (funkcija već loguje `console.error`).
-   Tek na osnovu stvarne greške odlučiti dalje — moguć kandidat je kombinacija
-   forsiranog `tool_choice` i razmišljanja; ne menjati kod bez te potvrde,
-   da `index.ts` ne odstupi od deploy-ovane verzije.
+   Tek na osnovu stvarne greške odlučiti dalje. (2026-10-21: `claude-api`
+   dokumentacija kaže da `claude-opus-5` PRIHVATA forsirani `tool_choice`; odbijaju
+   ga tek Opus 5.5 / Fable 5.1 / Sonnet 5.5. Taj rizik je zatvoren bez izmene koda.)
+   Ključ postoji (konzola: „SVESKA AI Test", ističe 2026-11-20) — Jovan ga sam
+   unosi u Secrets; ja ključeve ne unosim.
 4. Zatim testirati duplikate klijenata u multi-dodeli (reproducibilno samo kroz AI).
 
 # Faza 9 — SVESKA na GitHub Pages (2026-10-14)
@@ -756,7 +758,13 @@ Urađeno:
 NIJE dokazano i ne tvrdi se:
 - kvalitet prepoznavanja srpskog na iPhone-u — nema iPhone-a, nema srpskog snimka,
   nema ključa. To je test na uređaju posle `STT_API_KEY`.
-- [ ] Jovan: STT_API_KEY (Groq) u Edge Function Secrets, pa test na iPhone-u.
+- [~] STT_API_KEY — ODBAČENO 2026-10-21: Jovan hoće samo Claude ključ, bez STT
+  provajdera. Claude API ne prima zvuk (provereno u `claude-api` dokumentaciji:
+  blokovi su tekst/slika/PDF/alati — zvuka nema), pa serverski put na iPhone-u
+  nema čime da radi. `shouldUseServerStt()` sad vraća server SAMO bez motora
+  (Firefox); iPhone ide na Apple-ov motor u Safariju. Kod servera ostaje — vidi
+  DEPLOY.md A5b za povratak.
+- [ ] Jovan/tester: proveriti srpski na iPhone-u kroz Safari (Apple-ov motor).
 
 # Faza 16 — dupliranje na Androidu, DRUGI mehanizam (2026-10-21)
 

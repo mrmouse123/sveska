@@ -55,13 +55,18 @@ export function isIos(): boolean {
 }
 
 /**
- * Server se koristi SAMO tamo gde pregledač ne valja: iOS (slab srpski u
- * Apple-ovom motoru) i gde SpeechRecognition ne postoji. Chrome ostaje na
- * pregledaču — radi, trenutan je i besplatan.
+ * Server se koristi SAMO tamo gde pregledač nema nikakav motor (Firefox).
+ *
+ * iOS je prvobitno išao na server zbog slabog srpskog u Apple-ovom motoru,
+ * ali odluka je da projekat nema STT provajdera — a Claude API ne prima zvuk,
+ * pa serverski put bez provajdera na iPhone-u daje samo „nije podešeno".
+ * Apple-ov motor, kakav je, bolji je od zatvorenih vrata. Serverski put
+ * ostaje spreman: čim se postavi STT_API_KEY i ovde vrati `isIos() ||`,
+ * iPhone opet ide na server.
  */
 export function shouldUseServerStt(): boolean {
   if (!canRecord()) return false;
-  return isIos() || !hasBrowserRecognition();
+  return !hasBrowserRecognition();
 }
 
 type TranscribeResult = { ok: true; text: string } | { ok: false; code: VoiceErrorCode };

@@ -57,13 +57,16 @@ Prijava koristi samo email+lozinku (`signInWithPassword`), bez preusmeravanja �
 ovo **nije blokada za prijavu**. Jeste bitno za link iz mejla potvrde pri registraciji:
 bez Site URL-a taj link vodi u prazno.
 
-## A5b. Glas preko servera (iPhone, Firefox) — opciono
+## A5b. Glas preko servera — uspavano (odluka: bez STT provajdera)
 
-Na Chrome-u glas radi kroz pregledač, besplatno, bez ičega. Na **iOS Safariju**
-Apple-ov motor slabo zna srpski, a Firefox motora nema — tamo aplikacija snima
-zvuk i šalje ga edge funkciji `transcribe`, koja ga prosleđuje Whisper-kompatibilnom
-provajderu. Bez ključa korisnik na tim uređajima vidi poruku da server nije podešen
-i može da kuca; ništa se ne lomi.
+Glas radi kroz pregledačev motor svuda gde ga ima: Chrome (Google), iOS Safari
+(Apple — srpski mu je slab, ali to je motor koji postoji). **Claude API ne prima
+zvuk**, pa Claude ključ ne može da zameni STT provajdera.
+
+Edge funkcija `transcribe` i snimač ostaju u kodu i uključuju se samo u
+pregledačima bez ikakvog motora (Firefox). Ako se jednog dana odluči za
+provajdera, dovoljno je postaviti `STT_API_KEY` i u `recorderService.ts` vratiti
+`isIos() ||` u `shouldUseServerStt()` — tada iPhone ponovo ide na server.
 
 Preporučeno: **Groq** (Whisper large-v3, najbolji odnos srpskog i cene, ima besplatan
 nivo). Nalog na console.groq.com → API Keys → napravi ključ, pa:

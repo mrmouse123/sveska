@@ -254,11 +254,16 @@ function session(deps: RecorderDeps) {
   check("bez SpeechRecognition -> server", shouldUseServerStt() === true);
   g["SpeechRecognition"] = class {};
   check("desktop Chrome sa motorom -> pregledač", shouldUseServerStt() === false);
+  // Bez STT provajdera (odluka: samo Claude, a Claude ne prima zvuk) iPhone
+  // koristi Apple-ov motor u Safariju — server bi mu davao samo „nije podešeno".
   nav.userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) Safari/604.1";
-  check("iPhone, čak i sa motorom -> server", shouldUseServerStt() === true);
+  check("iPhone sa motorom -> pregledač (Apple-ov motor)", shouldUseServerStt() === false);
+  delete g["SpeechRecognition"];
+  check("iPhone bez motora -> server", shouldUseServerStt() === true);
+  g["SpeechRecognition"] = class {};
   nav.userAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) Safari/605.1";
   nav.maxTouchPoints = 5;
-  check("iPadOS koji se predstavlja kao Mac -> server", shouldUseServerStt() === true);
+  check("iPadOS sa motorom -> pregledač", shouldUseServerStt() === false);
   nav.maxTouchPoints = 0;
   check("pravi Mac -> pregledač", shouldUseServerStt() === false);
 }
