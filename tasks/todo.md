@@ -205,6 +205,19 @@ razlici umesto celog stanja, (3) baza kao jedini izvor istine i za vlasnika.
    unosi u Secrets; ja ključeve ne unosim.
 4. Zatim testirati duplikate klijenata u multi-dodeli (reproducibilno samo kroz AI).
 
+REZULTAT 2026-10-21 (ključ unet, pozivi iz Chrome sesije miske1431@, kroz gateway):
+- Hladan start: 21,7 s → app bi taj PRVI poziv ispustio (timeout 20 s) i pao na
+  lokalni interpreter. Zagrejani pozivi: 3,6–4,0 s. Ne menjati timeout bez
+  odluke — duže čekanje na hladan start je takođe trošak za korisnika.
+- „pošalji Marka kod Petrovića sutra u deset, cena sto evra" → ASSIGN_JOB,
+  worker Marko Jović, confidence 0.93; klijent/vreme/cenu popunjava lokalni
+  deo (merge). „ko mi je dužan" → ANSWER. „otkaži posao kod Petrovića" →
+  intent CANCEL_JOB, klijent prepoznat; bez poslova u kontekstu daje UNKNOWN.
+- Forsirani `tool_choice` na `claude-opus-5` radi — potvrđeno pozivom, ne papirom.
+- Zamka pri testu: Chrome localStorage na istom origin-u drži i sesiju tuđeg
+  projekta (`sb-xqggoxrihitvqaocowlb-auth-token`); njen token gateway odbija sa
+  UNAUTHORIZED_ASYMMETRIC_JWT. Uvek čitati ključ `sb-nieypuvbxvhapfvjbhoc-…`.
+
 # Faza 9 — SVESKA na GitHub Pages (2026-10-14)
 
 Cilj: živ sajt na `https://mrmouse123.github.io/sveska/`, isti obrazac kao `gradnjaos`.
