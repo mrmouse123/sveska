@@ -43,7 +43,7 @@ export const VOICE_MESSAGES: Record<VoiceErrorCode, string> = {
     "Ovaj uređaj ne prepoznaje srpski govor. Možeš i da otkucaš komandu.",
 };
 
-type SR = {
+export type SR = {
   lang: string;
   continuous: boolean;
   interimResults: boolean;
@@ -57,7 +57,7 @@ type SR = {
   onstart: (() => void) | null;
 };
 
-function getCtor(): (new () => SR) | null {
+export function getCtor(): (new () => SR) | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as Record<string, unknown>;
   return (w["SpeechRecognition"] ?? w["webkitSpeechRecognition"] ?? null) as

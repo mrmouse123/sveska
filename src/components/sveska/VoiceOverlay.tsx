@@ -193,7 +193,9 @@ export function VoiceOverlay({ mode }: { mode: Mode }) {
                 </p>
                 <p className="text-[11px] text-muted-foreground">
                   {speech.serverMode
-                    ? "Snimanje traje najviše 60 s; prepoznavanje ide preko servera."
+                    ? live
+                      ? "Tekst uživo je pregled; tačan stiže posle ZAVRŠI (najviše 60 s)."
+                      : "Snimanje traje najviše 60 s; prepoznavanje ide preko servera."
                     : "Automatski završavam nakon 10 sekundi tišine."}
                 </p>
               </div>

@@ -13,6 +13,7 @@
  *     --banner:js='globalThis.__ENV={};' && node .probe/recorder.mjs
  */
 import {
+  PREVIEW_OFF_KEY,
   createRecorderSession,
   shouldUseServerStt,
   type RecorderDeps,
@@ -21,7 +22,8 @@ import { VOICE_MESSAGES, type VoiceErrorCode, type VoiceStatus } from "../../src
 
 // ---------------------------------------------------------------- lažno okruženje
 let stoppedTracks = 0;
-const fakeStream = { getTracks: () => [{ stop: () => void stoppedTracks++ }] };
+const fakeTrack = { stop: () => void stoppedTracks++, onended: null as null | (() => void) };
+const fakeStream = { getTracks: () => [fakeTrack] };
 let getUserMediaImpl: () => Promise<unknown> = async () => fakeStream;
 
 const nav = {
@@ -346,6 +348,102 @@ function session(deps: RecorderDeps) {
     await wait(30);
     check(`${reason} -> ${want}`, x.errorCode === want, String(x.errorCode));
   }
+}
+
+// ---------------------------------------------------------------- O: pregled uživo uz snimanje
+{
+  type Handler = ((e: unknown) => void) | null;
+  const made: PreviewFake[] = [];
+  class PreviewFake {
+    lang = ""; continuous = false; interimResults = true;
+    onresult: Handler = null; onerror: Handler = null; onend: (() => void) | null = null; onstart = null;
+    started = 0; aborted = 0;
+    constructor() { made.push(this); }
+    start() { this.started++; }
+    stop() {}
+    abort() { this.aborted++; }
+    say(text: string) {
+      this.onresult?.({ results: { length: 1, 0: { 0: { transcript: text } } } });
+    }
+  }
+  const store: Record<string, string> = {};
+  g["localStorage"] = {
+    getItem: (k: string) => store[k] ?? null,
+    setItem: (k: string, v: string) => void (store[k] = v),
+  };
+  g["SpeechRecognition"] = PreviewFake;
+
+  console.log("\n=== O: pregled uživo dok se snima ===");
+  {
+    const seenLive: [string, string][] = [];
+    const { deps, seen } = makeDeps(() => okJson({ ok: true, text: "pošalji Marka kod Ane" }));
+    let delivered: string | null = null;
+    const s = createRecorderSession(
+      { onTranscript: (t, i) => void seenLive.push([t, i]), onFinish: (t) => void (delivered = t) },
+      deps,
+    );
+    s.startListening();
+    await wait(30);
+    const p = made[made.length - 1]!;
+    check("pregled pokrenut posle starta snimanja", p.started === 1, `start() ${p.started}x`);
+    check("jezik sr-RS, interimResults", p.lang === "sr-RS" && p.interimResults === true);
+    p.say("pošalji Marka");
+    check(
+      "pregled stiže kao privremeni tekst, bez konačnog",
+      JSON.stringify(seenLive.at(-1)) === JSON.stringify(["", "pošalji Marka"]),
+      JSON.stringify(seenLive.at(-1)),
+    );
+    s.finishVoiceInput();
+    await wait(30);
+    check("Groq tekst zamenjuje pregled", delivered === "pošalji Marka kod Ane", String(delivered));
+    check("pregled ugašen posle ZAVRŠI", p.aborted >= 1, `abort() ${p.aborted}x`);
+    check("jedan zahtev Groq-u", seen.length === 1);
+  }
+  {
+    const { deps } = makeDeps(() => okJson({ ok: true, text: "x" }));
+    const s = createRecorderSession({}, deps);
+    s.startListening();
+    await wait(30);
+    const p = made[made.length - 1]!;
+    s.cancelVoiceSession();
+    check("otkaz gasi pregled", p.aborted >= 1, `abort() ${p.aborted}x`);
+  }
+  {
+    // Greška pregleda ne sme da obori snimanje.
+    const { deps } = makeDeps(() => okJson({ ok: true, text: "snimak ok" }));
+    let delivered: string | null = null;
+    let errorCode: string | null = null;
+    const s = createRecorderSession(
+      { onFinish: (t) => void (delivered = t), onError: (c) => void (errorCode = c) },
+      deps,
+    );
+    s.startListening();
+    await wait(30);
+    const p = made[made.length - 1]!;
+    p.onerror?.({ error: "audio-capture" });
+    s.finishVoiceInput();
+    await wait(30);
+    check("greška pregleda: snimanje i dalje isporučuje", delivered === "snimak ok" && errorCode === null, `${String(delivered)} ${String(errorCode)}`);
+  }
+  {
+    // Snimanje pukne dok pregled radi → pregled se gasi trajno na uređaju.
+    const { deps } = makeDeps(() => okJson({ ok: true, text: "x" }));
+    const s = createRecorderSession({}, deps);
+    s.startListening();
+    await wait(30);
+    const before = made.length;
+    // FakeRecorder nema onerror okidač spolja; simuliramo prekid trake.
+    (fakeStream.getTracks()[0] as unknown as { onended?: () => void }).onended?.();
+    await wait(10);
+    check("prekid trake uz pregled upisuje ključ za gašenje", store[PREVIEW_OFF_KEY] === "1", JSON.stringify(store));
+    const s2 = createRecorderSession({}, deps);
+    s2.startListening();
+    await wait(30);
+    check("sledeći put pregled se ne pokreće", made.length === before, `napravljeno ${made.length - before} novih`);
+    s2.cancelVoiceSession();
+    delete store[PREVIEW_OFF_KEY];
+  }
+  delete g["SpeechRecognition"];
 }
 
 // ---------------------------------------------------------------- I: izbor puta

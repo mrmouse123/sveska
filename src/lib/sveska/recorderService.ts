@@ -14,14 +14,41 @@ import { getSupabaseConfig } from "./supabaseService";
 import { getSession } from "./auth";
 import {
   VOICE_MESSAGES,
+  getCtor,
   hasBrowserRecognition,
   isSecureContextOk,
+  type SR,
   type VoiceCallbacks,
   type VoiceErrorCode,
   type VoiceSession,
 } from "./voiceService";
 
 export const MAX_RECORD_MS = 60_000;
+
+/**
+ * Pregled uživo na serverskom putu: dok MediaRecorder snima za Groq, Apple-ov
+ * motor paralelno prepoznaje SAMO za prikaz, reč po reč. Tačan tekst stiže od
+ * Groq-a posle ZAVRŠI i zamenjuje pregled. Dva slušaoca na istom mikrofonu umeju
+ * da se potuku na iOS-u — ako snimanje pukne dok pregled radi, pregled se gasi
+ * na ovom uređaju (ključ u localStorage) i sledeći put se ne pokušava.
+ */
+export const PREVIEW_OFF_KEY = "sveska:voice-preview-off";
+
+function previewDisabled(): boolean {
+  try {
+    return typeof localStorage !== "undefined" && localStorage.getItem(PREVIEW_OFF_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function disablePreview(): void {
+  try {
+    localStorage.setItem(PREVIEW_OFF_KEY, "1");
+  } catch {
+    /* privatni režim — pregled se gasi samo za ovu sesiju */
+  }
+}
 
 /** Zavisnosti koje proba zamenjuje; u aplikaciji su podrazumevane. */
 export type RecorderDeps = {
@@ -142,12 +169,70 @@ export function createRecorderSession(
   let finished = false;
   let capTimer: ReturnType<typeof setTimeout> | null = null;
   let upload: AbortController | null = null;
+  let preview: SR | null = null;
+
+  function stopPreview() {
+    const p = preview;
+    preview = null;
+    if (!p) return;
+    p.onresult = null;
+    p.onerror = null;
+    p.onend = null;
+    try {
+      p.abort();
+    } catch {
+      /* već stao */
+    }
+  }
+
+  /** Apple-ov motor samo za prikaz; svaka greška ga tiho gasi, snimanje ide dalje. */
+  function startPreview() {
+    if (preview || !active || previewDisabled()) return;
+    const Ctor = getCtor();
+    if (!Ctor) return;
+    let p: SR;
+    try {
+      p = new Ctor();
+      p.lang = "sr-RS";
+      p.continuous = true;
+      p.interimResults = true;
+    } catch {
+      return;
+    }
+    preview = p;
+    p.onresult = (event: unknown) => {
+      if (preview !== p) return;
+      const e = event as { results: { length: number; [i: number]: { 0: { transcript: string } } } };
+      const parts: string[] = [];
+      for (let i = 0; i < e.results.length; i++) parts.push(e.results[i]![0].transcript.trim());
+      // Sve ide kao „privremeno": konačan tekst daje Groq, ne ovaj motor.
+      cb.onTranscript?.("", parts.filter(Boolean).join(" "));
+    };
+    p.onerror = () => {
+      if (preview !== p) return;
+      stopPreview();
+    };
+    p.onend = () => {
+      if (preview !== p || !active) return;
+      try {
+        p.start();
+      } catch {
+        stopPreview();
+      }
+    };
+    try {
+      p.start();
+    } catch {
+      stopPreview();
+    }
+  }
 
   const setStatus = (s: Parameters<NonNullable<VoiceCallbacks["onStatus"]>>[0]) =>
     cb.onStatus?.(s);
 
   function releaseMic() {
     // Mikrofon se pušta na SVAKOM izlazu — i uspehu i grešci i otkazu.
+    stopPreview();
     stream?.getTracks().forEach((t) => t.stop());
     stream = null;
   }
@@ -213,7 +298,11 @@ export function createRecorderSession(
         if (e.data && e.data.size > 0) chunks.push(e.data);
       };
       recorder.onstop = () => void handleStop();
-      recorder.onerror = () => fail("audio-capture");
+      recorder.onerror = () => {
+        // Snimanje puklo dok je pregled radio: pregled je sumnjiv, gasi se trajno.
+        if (preview) disablePreview();
+        fail("audio-capture");
+      };
       // Komadi na svaku sekundu, da snimak ne zavisi od jednog velikog `stop`.
       // start() ume da baci (iOS ugasi zvučnu traku kad se ekran zaključa između
       // dozvole i starta) — izvan try bi to bilo neuhvaćeno odbijanje sa
@@ -224,6 +313,17 @@ export function createRecorderSession(
     }
     setStatus("listening");
     capTimer = setTimeout(() => finishVoiceInput(), deps.maxMs);
+    // Tek POSLE starta snimanja: ako pregled zasmeta, snimanje je već u toku i
+    // greška se vidi kao greška snimanja, pa se pregled gasi.
+    startPreview();
+    const track = stream.getTracks()[0];
+    if (track) {
+      track.onended = () => {
+        if (!active) return;
+        if (preview) disablePreview();
+        fail("audio-capture");
+      };
+    }
   }
 
   async function handleStop() {
