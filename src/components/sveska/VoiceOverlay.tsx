@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
+import { getVoiceTrace } from "@/lib/sveska/voiceService";
 import { useDemo } from "@/lib/sveska/store";
 import { processVoiceCommand } from "@/lib/sveska/aiService";
 import { executeAiResult } from "@/lib/sveska/actions";
@@ -42,6 +43,28 @@ function confidenceLabel(c: number): string {
   if (c >= 0.9) return "sigurna sam";
   if (c >= 0.75) return "prilično sigurna, pogledaj polja";
   return "nisam sigurna, proveri pre čuvanja";
+}
+
+/**
+ * Kopira trag prepoznavača u klipbord — za slučajeve koje ne umemo da
+ * reprodukujemo bez uređaja (dupliranje na Androidu). Ništa se ne šalje nigde.
+ */
+function DiagnosticsButton() {
+  return (
+    <button
+      type="button"
+      className="mt-3 text-[11px] text-muted-foreground underline underline-offset-2"
+      onClick={() => {
+        const text = getVoiceTrace();
+        void navigator.clipboard?.writeText(text).then(
+          () => toast.success("Dijagnostika je kopirana — nalepi je u poruku."),
+          () => toast.error("Nisam uspela da kopiram. Probaj ponovo."),
+        );
+      }}
+    >
+      DIJAGNOSTIKA (kopiraj trag glasa)
+    </button>
+  );
 }
 
 export function VoiceOverlay({ mode }: { mode: Mode }) {
@@ -228,6 +251,7 @@ export function VoiceOverlay({ mode }: { mode: Mode }) {
                   ) : null}
                 </div>
               ) : null}
+              <DiagnosticsButton />
               <p className="mt-6 text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
                 Probaj demo komandu
               </p>
@@ -510,6 +534,7 @@ function ResultView({
         {" · "}
         {confidenceLabel(result.confidence ?? 0.9)}
       </p>
+      <DiagnosticsButton />
     </div>
   );
 }

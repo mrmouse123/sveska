@@ -89,6 +89,25 @@ export type VoiceCallbacks = {
 const norm = (t: string) => t.toLowerCase().replace(/\s+/g, " ").trim();
 const joinText = (a: string, b: string) => `${a} ${b}`.replace(/\s+/g, " ").trim();
 
+/**
+ * Trag događaja prepoznavača — samo u memoriji, poslednjih TRACE_MAX redova.
+ * Dupliranje na Androidu je popravljano dva puta na osnovu PRETPOSTAVKE šta motor
+ * šalje; treći put se popravlja iz stvarnog toka. Dugme DIJAGNOSTIKA kopira trag
+ * u klipbord; ništa se ne šalje nigde (trag sadrži izgovoreni tekst).
+ */
+const TRACE_MAX = 300;
+let trace: string[] = [];
+let traceT0 = 0;
+function traceLine(line: string) {
+  const t = traceT0 ? String(Date.now() - traceT0).padStart(6, " ") : "     0";
+  trace.push(`${t}ms ${line}`);
+  if (trace.length > TRACE_MAX) trace = trace.slice(-TRACE_MAX);
+}
+export function getVoiceTrace(): string {
+  const ua = typeof navigator === "undefined" ? "?" : navigator.userAgent;
+  return [`SVESKA glas · ${new Date().toISOString()}`, `UA: ${ua}`, ...trace].join("\n");
+}
+
 export function createVoiceSession(cb: VoiceCallbacks) {
   let rec: SR | null = null;
   let finalText = "";
@@ -182,6 +201,7 @@ export function createVoiceSession(cb: VoiceCallbacks) {
     const current = () => r === rec;
 
     r.onstart = () => {
+      traceLine(`onstart current=${current()} active=${active}`);
       if (!current() || !active) return;
       setStatus("listening");
       // Pravilo tišine se naoružava od prvog starta, ne od prve reči: ko otvori
@@ -207,16 +227,24 @@ export function createVoiceSession(cb: VoiceCallbacks) {
       // iznova iz CELOG niza, pa je kumulativna isporuka bezopasna.
       const finals: string[] = [];
       let interim = "";
+      const raw: string[] = [];
       for (let i = 0; i < e.results.length; i++) {
         const res = e.results[i]!;
         const chunk = res[0].transcript.trim();
+        raw.push(`${res.isFinal ? "F" : "I"}«${chunk}»`);
         if (!chunk) continue;
         if (res.isFinal) finals.push(chunk);
         else interim += ` ${chunk}`;
       }
-      sessionFinal = dropReplay(finals.join(" "));
+      const joined = finals.join(" ");
+      sessionFinal = dropReplay(joined);
       if (finals.length) lastFinal = finals[finals.length - 1]!;
       finalText = joinText(committed, sessionFinal);
+      traceLine(
+        `onresult idx=${e.resultIndex} n=${e.results.length} ${raw.join(" ")} | ` +
+          `guards=${JSON.stringify(replayGuards)} drop=«${joined}»→«${sessionFinal}» | ` +
+          `committed=«${committed}» t=«${finalText}» i=«${interim.trim()}»`,
+      );
       if (finalText || interim.trim()) resetSilenceTimer();
       cb.onTranscript?.(finalText, interim.trim());
     };
@@ -224,6 +252,7 @@ export function createVoiceSession(cb: VoiceCallbacks) {
     r.onerror = (event: unknown) => {
       if (!current()) return;
       const raw = (event as { error?: string }).error ?? "unknown";
+      traceLine(`onerror ${raw}`);
       if (raw === "aborted") return;
       if (raw === "no-speech") return; // keep the session alive; 10s rule decides
       if (raw === "not-allowed" || raw === "service-not-allowed") {
@@ -243,6 +272,7 @@ export function createVoiceSession(cb: VoiceCallbacks) {
       // A browser session ending is NOT the end of the user's input.
       // Na Androidu `continuous` jedva radi, pa ovo okida posle SVAKE rečenice —
       // ono što je na desktopu redak slučaj, na telefonu je pravilo.
+      traceLine(`onend current=${current()} active=${active} finished=${finished} sessionFinal=«${sessionFinal}»`);
       if (!current() || !active || finished || permissionBlocked) return;
       // Sesija se zatvara: njen tekst prelazi u `committed`, a poslednja rečenica
       // postaje čuvar — Android je posle start() zna isporučiti još jednom.
@@ -253,7 +283,9 @@ export function createVoiceSession(cb: VoiceCallbacks) {
       finalText = committed;
       try {
         r.start();
+        traceLine("restart: r.start() na istoj instanci");
       } catch {
+        traceLine("restart: start() bacio → nova instanca za 250 ms");
         // Some engines need a fresh instance after ending.
         setTimeout(() => {
           if (active && !finished && r === rec) startRecognition();
@@ -279,6 +311,9 @@ export function createVoiceSession(cb: VoiceCallbacks) {
   function startListening() {
     if (!isVoiceSupported()) return fail("unsupported");
     if (!isSecureContextOk()) return fail("insecure");
+    trace = [];
+    traceT0 = Date.now();
+    traceLine("startListening (pregledačev motor)");
     finalText = "";
     committed = "";
     sessionFinal = "";
@@ -296,6 +331,7 @@ export function createVoiceSession(cb: VoiceCallbacks) {
 
   /** Manual ZAVRŠI or the 10s silence rule. */
   function finishVoiceInput() {
+    traceLine(`finish active=${active} finished=${finished} finalText=«${finalText}»`);
     if (!active || finished) return;
     finished = true;
     active = false;
@@ -312,6 +348,7 @@ export function createVoiceSession(cb: VoiceCallbacks) {
   }
 
   function cancelVoiceSession() {
+    traceLine("cancel");
     active = false;
     finished = true;
     clearTimers();
