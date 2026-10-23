@@ -935,3 +935,20 @@ Uživo (v12): poznat klijent 0.97 · Mišković (nov) 0.85 · „zakaži posao s
 - [ ] Podsetnici (CREATE_REMINDER) — najveći dobitak, čeka odluku: pretvara ceo razred
   rečenica („nazovi X sutra", „naruči cevi u petak") iz UNKNOWN u siguran zapis.
 
+# Faza 21 — pregled novog koda (trag, pregled uživo, skala, potvrda) (2026-10-23)
+
+Čitač + lint/tsc/17 proba. Invarijante drže (pregled gašen pre Groq teksta, `active`
+pada pre puštanja trake, jedan pregled po sesiji, rok tišine tek posle `listening`).
+Popravljeno: prekidač pregleda gledao `preview` (živ) umesto „pregled je radio" → na
+iOS-u sukob prvo ubije pregled pa snimanje, ključ se ne bi upisao; katanac trajan posle
+jednog prekida trake → sad broji uzastopne neuspehe (2), uspeh briše; `track.onmute`
+(sukob ume samo da utiša); restart pregleda nova instanca + granica 20; trag i na
+serverskom putu (DIJAGNOSTIKA na iPhone-u je bila prazna); oznaka „sigurna sam" od 0.92;
+skala bez rupa; uputstvo: prezime poznatog klijenta → puno ime (inače bi otkazivanje po
+prezimenu promašilo `targetJob`); čet potvrda imenuje posao. ai-process v13 = repo.
+
+NIJE provereno uživo: Chrome sesija za SVESKA projekat je istekla/odjavljena
+(ostala samo tuđa `sb-xqgg…`), pa „otkaži posao kod Miškovića" uz „Jovan Mišković" u
+kontekstu nije pušteno kroz v13. Jovan: prijava u Chrome ili test na telefonu.
+- [ ] Jovan: iPhone — tekst uživo dok pričaš; posle dva neuspeha pregled se sam gasi.
+
