@@ -40,7 +40,10 @@ export function ChatScreen({ mode }: { mode: Mode }) {
       // da nađe — zato isti `confirm` kao i u dijalogu statusa (Common.tsx).
       const destructive = res.suggestedAction === "CANCEL_JOB" || res.suggestedAction === "UPDATE_JOB";
       const what = res.suggestedAction === "CANCEL_JOB" ? "otkažem" : "izmenim";
-      if (destructive && !window.confirm(`Da ${what} posao kod „${res.customer ?? "klijenta"}"?`)) {
+      // Klijent ume da ima više aktivnih poslova; potvrda kaže KOJI je izabran.
+      const job = demo.state.jobs.find((j) => j.id === res.jobId);
+      const which = job ? `„${job.description}" (${job.date} u ${job.time})` : `kod „${res.customer ?? "klijenta"}"`;
+      if (destructive && !window.confirm(`Da ${what} posao ${which}?`)) {
         reply = "U redu, ništa nisam menjala.";
       } else {
         reply = executeAiResult(res, mode, demo.state, demo);

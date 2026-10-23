@@ -98,7 +98,13 @@ const joinText = (a: string, b: string) => `${a} ${b}`.replace(/\s+/g, " ").trim
 const TRACE_MAX = 300;
 let trace: string[] = [];
 let traceT0 = 0;
-function traceLine(line: string) {
+/** Nova sesija (bilo kog puta) počinje prazan trag. */
+export function resetTrace(label: string) {
+  trace = [];
+  traceT0 = Date.now();
+  traceLine(label);
+}
+export function traceLine(line: string) {
   const t = traceT0 ? String(Date.now() - traceT0).padStart(6, " ") : "     0";
   trace.push(`${t}ms ${line}`);
   if (trace.length > TRACE_MAX) trace = trace.slice(-TRACE_MAX);
@@ -311,9 +317,7 @@ export function createVoiceSession(cb: VoiceCallbacks) {
   function startListening() {
     if (!isVoiceSupported()) return fail("unsupported");
     if (!isSecureContextOk()) return fail("insecure");
-    trace = [];
-    traceT0 = Date.now();
-    traceLine("startListening (pregledačev motor)");
+    resetTrace("startListening (pregledačev motor)");
     finalText = "";
     committed = "";
     sessionFinal = "";

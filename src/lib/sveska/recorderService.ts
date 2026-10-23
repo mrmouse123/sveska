@@ -17,6 +17,8 @@ import {
   getCtor,
   hasBrowserRecognition,
   isSecureContextOk,
+  resetTrace,
+  traceLine,
   type SR,
   type VoiceCallbacks,
   type VoiceErrorCode,
@@ -29,24 +31,38 @@ export const MAX_RECORD_MS = 60_000;
  * Pregled uživo na serverskom putu: dok MediaRecorder snima za Groq, Apple-ov
  * motor paralelno prepoznaje SAMO za prikaz, reč po reč. Tačan tekst stiže od
  * Groq-a posle ZAVRŠI i zamenjuje pregled. Dva slušaoca na istom mikrofonu umeju
- * da se potuku na iOS-u — ako snimanje pukne dok pregled radi, pregled se gasi
- * na ovom uređaju (ključ u localStorage) i sledeći put se ne pokušava.
+ * da se potuku na iOS-u — ako snimanje pukne (greška snimača, prekid ili
+ * utišanje trake) u sesiji u kojoj je pregled RADIO, to se broji kao neuspeh.
+ * Posle PREVIEW_MAX_FAILURES uzastopnih neuspeha pregled se više ne pokušava na
+ * ovom uređaju; jedna uspešna sesija sa pregledom briše brojač. Tako jedan
+ * telefonski poziv usred diktiranja ne gasi tekst uživo zauvek.
  */
-export const PREVIEW_OFF_KEY = "sveska:voice-preview-off";
+export const PREVIEW_OFF_KEY = "sveska:voice-preview-failures";
+export const PREVIEW_MAX_FAILURES = 2;
 
-function previewDisabled(): boolean {
+function previewFailures(): number {
   try {
-    return typeof localStorage !== "undefined" && localStorage.getItem(PREVIEW_OFF_KEY) === "1";
+    return typeof localStorage === "undefined" ? 0 : Number(localStorage.getItem(PREVIEW_OFF_KEY) ?? 0) || 0;
   } catch {
-    return false;
+    return 0;
   }
 }
 
-function disablePreview(): void {
+const previewDisabled = (): boolean => previewFailures() >= PREVIEW_MAX_FAILURES;
+
+function notePreviewFailure(): void {
   try {
-    localStorage.setItem(PREVIEW_OFF_KEY, "1");
+    localStorage.setItem(PREVIEW_OFF_KEY, String(previewFailures() + 1));
   } catch {
-    /* privatni režim — pregled se gasi samo za ovu sesiju */
+    /* privatni režim — broji se samo u ovoj sesiji */
+  }
+}
+
+function notePreviewSuccess(): void {
+  try {
+    localStorage.removeItem(PREVIEW_OFF_KEY);
+  } catch {
+    /* ništa */
   }
 }
 
@@ -170,6 +186,10 @@ export function createRecorderSession(
   let capTimer: ReturnType<typeof setTimeout> | null = null;
   let upload: AbortController | null = null;
   let preview: SR | null = null;
+  /** Da li je pregled u OVOJ sesiji uopšte krenuo — prekidač gleda ovo, ne `preview`,
+   *  jer sukob na iOS-u prvo ubije pregled (preview = null) pa tek onda snimanje. */
+  let previewRan = false;
+  let previewRestarts = 0;
 
   function stopPreview() {
     const p = preview;
@@ -185,11 +205,21 @@ export function createRecorderSession(
     }
   }
 
+  /** Snimanje je stradalo u sesiji sa pregledom: pregled je osumnjičen. */
+  function recordingBroken(where: string) {
+    traceLine(`${where} previewRan=${previewRan}`);
+    if (previewRan) notePreviewFailure();
+    stopPreview();
+  }
+
   /** Apple-ov motor samo za prikaz; svaka greška ga tiho gasi, snimanje ide dalje. */
   function startPreview() {
-    if (preview || !active || previewDisabled()) return;
+    if (preview || !active || previewDisabled()) {
+      traceLine(`preview: preskočen (failures=${previewFailures()})`);
+      return;
+    }
     const Ctor = getCtor();
-    if (!Ctor) return;
+    if (!Ctor) return traceLine("preview: nema motora");
     let p: SR;
     try {
       p = new Ctor();
@@ -197,7 +227,7 @@ export function createRecorderSession(
       p.continuous = true;
       p.interimResults = true;
     } catch {
-      return;
+      return traceLine("preview: konstruktor bacio");
     }
     preview = p;
     p.onresult = (event: unknown) => {
@@ -205,24 +235,36 @@ export function createRecorderSession(
       const e = event as { results: { length: number; [i: number]: { 0: { transcript: string } } } };
       const parts: string[] = [];
       for (let i = 0; i < e.results.length; i++) parts.push(e.results[i]![0].transcript.trim());
+      const text = parts.filter(Boolean).join(" ");
+      traceLine(`preview onresult n=${e.results.length} «${text}»`);
       // Sve ide kao „privremeno": konačan tekst daje Groq, ne ovaj motor.
-      cb.onTranscript?.("", parts.filter(Boolean).join(" "));
+      cb.onTranscript?.("", text);
     };
-    p.onerror = () => {
+    p.onerror = (event: unknown) => {
       if (preview !== p) return;
+      traceLine(`preview onerror ${(event as { error?: string }).error ?? "?"}`);
       stopPreview();
     };
     p.onend = () => {
       if (preview !== p || !active) return;
+      // Safari ume da odbije start() na istoj instanci — onda nova; i gornja granica,
+      // da start→onend ping-pong ne vrti motor u prazno do kraja snimanja.
+      previewRestarts++;
+      traceLine(`preview onend → restart #${previewRestarts}`);
+      if (previewRestarts > 20) return stopPreview();
       try {
         p.start();
       } catch {
         stopPreview();
+        startPreview();
       }
     };
     try {
       p.start();
+      previewRan = true;
+      traceLine("preview: pokrenut");
     } catch {
+      traceLine("preview: start() bacio");
       stopPreview();
     }
   }
@@ -244,6 +286,7 @@ export function createRecorderSession(
   }
 
   function fail(code: VoiceErrorCode) {
+    traceLine(`fail ${code}`);
     active = false;
     finished = true;
     clearCap();
@@ -264,9 +307,12 @@ export function createRecorderSession(
 
   async function startListening() {
     if (active) return; // dva starta bi otvorila dva toka; prvi bi ostao bez stop()
+    resetTrace("startListening (snimač → server)");
     if (!canRecord()) return fail("unsupported");
     if (!isSecureContextOk()) return fail("insecure");
     chunks = [];
+    previewRan = false;
+    previewRestarts = 0;
     finished = false;
     active = true;
     clearCap();
@@ -299,8 +345,7 @@ export function createRecorderSession(
       };
       recorder.onstop = () => void handleStop();
       recorder.onerror = () => {
-        // Snimanje puklo dok je pregled radio: pregled je sumnjiv, gasi se trajno.
-        if (preview) disablePreview();
+        recordingBroken("recorder onerror");
         fail("audio-capture");
       };
       // Komadi na svaku sekundu, da snimak ne zavisi od jednog velikog `stop`.
@@ -320,14 +365,21 @@ export function createRecorderSession(
     if (track) {
       track.onended = () => {
         if (!active) return;
-        if (preview) disablePreview();
+        recordingBroken("track onended");
         fail("audio-capture");
+      };
+      // Sukob na iOS-u ume da traku samo UTIŠA, ne i prekine: snimak bi bio
+      // tišina, Groq bi vratio prazno, i ništa ne bi ukazalo na pregled.
+      track.onmute = () => {
+        if (!active) return;
+        recordingBroken("track onmute");
       };
     }
   }
 
   async function handleStop() {
     const blob = new Blob(chunks, { type: mime || chunks[0]?.type || "audio/webm" });
+    traceLine(`handleStop blob=${blob.size}B previewRan=${previewRan}`);
     recorder = null;
     releaseMic();
     // Otkaz nikad ne stiže ovde (otkaz skida onstop pre stop()), pa prazan snimak
@@ -341,14 +393,18 @@ export function createRecorderSession(
     const result = await transcribeAudio(blob, deps, upload.signal);
     if (upload === null) return; // otkazano tokom slanja
     upload = null;
+    traceLine(`transcribe ${result.ok ? `ok «${result.text}»` : `greška ${result.code}`}`);
     if (!result.ok) return fail(result.code);
     if (!result.text) return fail("no-speech");
+    // Sesija sa pregledom je isporučila tekst: pregled nije smetao, brojač se briše.
+    if (previewRan) notePreviewSuccess();
     cb.onTranscript?.(result.text, "");
     cb.onFinish?.(result.text);
   }
 
   /** ZAVRŠI ili tvrda granica trajanja. */
   function finishVoiceInput() {
+    traceLine(`finish active=${active} finished=${finished} chunks=${chunks.length}`);
     if (!active || finished) return;
     finished = true;
     active = false;
@@ -361,6 +417,7 @@ export function createRecorderSession(
   }
 
   function cancelVoiceSession() {
+    traceLine("cancel");
     active = false;
     finished = true;
     clearCap();

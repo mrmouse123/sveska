@@ -40,7 +40,9 @@ type Phase = "idle" | "listening" | "thinking" | "result";
  * 0.8 nov klijent ili jedna pretpostavka, ispod toga nešto bitno nedostaje.
  */
 function confidenceLabel(c: number): string {
-  if (c >= 0.9) return "sigurna sam";
+  // Skala u uputstvu: 0.95+ sve poznato, 0.8–0.89 nov klijent. 0.9 ne sme da
+  // pročita kao „sigurna" — granica je iznad opsega za nov klijent.
+  if (c >= 0.92) return "sigurna sam";
   if (c >= 0.75) return "prilično sigurna, pogledaj polja";
   return "nisam sigurna, proveri pre čuvanja";
 }

@@ -13,6 +13,7 @@
  *     --banner:js='globalThis.__ENV={};' && node .probe/recorder.mjs
  */
 import {
+  PREVIEW_MAX_FAILURES,
   PREVIEW_OFF_KEY,
   createRecorderSession,
   shouldUseServerStt,
@@ -22,7 +23,11 @@ import { VOICE_MESSAGES, type VoiceErrorCode, type VoiceStatus } from "../../src
 
 // ---------------------------------------------------------------- lažno okruženje
 let stoppedTracks = 0;
-const fakeTrack = { stop: () => void stoppedTracks++, onended: null as null | (() => void) };
+const fakeTrack = {
+  stop: () => void stoppedTracks++,
+  onended: null as null | (() => void),
+  onmute: null as null | (() => void),
+};
 const fakeStream = { getTracks: () => [fakeTrack] };
 let getUserMediaImpl: () => Promise<unknown> = async () => fakeStream;
 
@@ -370,6 +375,7 @@ function session(deps: RecorderDeps) {
   g["localStorage"] = {
     getItem: (k: string) => store[k] ?? null,
     setItem: (k: string, v: string) => void (store[k] = v),
+    removeItem: (k: string) => void delete store[k],
   };
   g["SpeechRecognition"] = PreviewFake;
 
@@ -426,22 +432,58 @@ function session(deps: RecorderDeps) {
     check("greška pregleda: snimanje i dalje isporučuje", delivered === "snimak ok" && errorCode === null, `${String(delivered)} ${String(errorCode)}`);
   }
   {
-    // Snimanje pukne dok pregled radi → pregled se gasi trajno na uređaju.
+    // Najverovatniji redosled sukoba na iOS-u: pregled prvo pukne (preview=null),
+    // pa tek onda snimanje. Prekidač mora da gleda „pregled je radio", ne „pregled živi".
     const { deps } = makeDeps(() => okJson({ ok: true, text: "x" }));
     const s = createRecorderSession({}, deps);
     s.startListening();
     await wait(30);
-    const before = made.length;
-    // FakeRecorder nema onerror okidač spolja; simuliramo prekid trake.
-    (fakeStream.getTracks()[0] as unknown as { onended?: () => void }).onended?.();
+    const p = made[made.length - 1]!;
+    p.onerror?.({ error: "audio-capture" });
+    fakeTrack.onended?.();
     await wait(10);
-    check("prekid trake uz pregled upisuje ključ za gašenje", store[PREVIEW_OFF_KEY] === "1", JSON.stringify(store));
+    check("pregled pukao PA snimanje: broji se neuspeh", store[PREVIEW_OFF_KEY] === "1", JSON.stringify(store));
+    // Jedan neuspeh ne gasi: telefonski poziv usred diktiranja ne sme da ukine tekst uživo.
+    const before = made.length;
     const s2 = createRecorderSession({}, deps);
     s2.startListening();
     await wait(30);
-    check("sledeći put pregled se ne pokreće", made.length === before, `napravljeno ${made.length - before} novih`);
+    check("posle jednog neuspeha pregled se i dalje pokušava", made.length === before + 1, `novih: ${made.length - before}`);
+    fakeTrack.onmute?.();
+    await wait(10);
+    check("utišana traka uz pregled: drugi neuspeh", store[PREVIEW_OFF_KEY] === String(PREVIEW_MAX_FAILURES), JSON.stringify(store));
     s2.cancelVoiceSession();
+    const before3 = made.length;
+    const s3 = createRecorderSession({}, deps);
+    s3.startListening();
+    await wait(30);
+    check("posle dva neuspeha pregled se ne pokreće", made.length === before3, `novih: ${made.length - before3}`);
+    s3.cancelVoiceSession();
     delete store[PREVIEW_OFF_KEY];
+  }
+  {
+    // Uspešna sesija sa pregledom briše brojač.
+    store[PREVIEW_OFF_KEY] = "1";
+    const { deps } = makeDeps(() => okJson({ ok: true, text: "uspeh" }));
+    const s = createRecorderSession({}, deps);
+    s.startListening();
+    await wait(30);
+    s.finishVoiceInput();
+    await wait(30);
+    check("uspeh sa pregledom briše brojač neuspeha", store[PREVIEW_OFF_KEY] === undefined, JSON.stringify(store));
+  }
+  {
+    // Pregled se posle onend ponovo pokreće dok sesija traje, a ne posle kraja.
+    const { deps } = makeDeps(() => okJson({ ok: true, text: "x" }));
+    const s = createRecorderSession({}, deps);
+    s.startListening();
+    await wait(30);
+    const p = made[made.length - 1]!;
+    p.onend?.();
+    check("onend dok traje: restart na istoj instanci", p.started === 2, `start() ${p.started}x`);
+    s.cancelVoiceSession();
+    p.onend?.();
+    check("onend posle otkaza: bez restarta", p.started === 2, `start() ${p.started}x`);
   }
   delete g["SpeechRecognition"];
 }
